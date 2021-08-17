@@ -1,0 +1,415 @@
+# Copyright 2021 Matteo Grasso
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+from .globals.o3de import *
+from .globals.o3tanks import *
+from .utils.filesystem import *
+from .utils.input_output import *
+from .utils.serialization import *
+from .utils.subfunctions import *
+from .utils.types import *
+import subprocess
+
+
+# -- SUBFUNCTIONS ---
+
+def generate_configurations(source_dir, build_dir):
+	result = subprocess.run([
+		"cmake",
+		"-B", build_dir,
+		"-S", source_dir,
+		"-G", "Ninja Multi-Config",
+		"-DCMAKE_C_COMPILER=clang-6.0",
+		"-DCMAKE_CXX_COMPILER=clang++-6.0",
+		"-DLY_UNITY_BUILD=ON",
+		"-DLY_3RDPARTY_PATH=" + str(O3DE_PACKAGES_DIR)
+	])
+
+	return result.returncode
+
+
+def get_setting_key(setting_section, setting_name):
+	if not Settings.has_value(setting_section):
+		throw_error(Messages.INVALID_SETTING_SECTION, setting_key.section)
+
+	if setting_section == Settings.ENGINE.value:
+		section = EngineSettings
+	else:
+		throw_error(Messages.INVALID_SETTING_SECTION, setting_key.section)
+
+	setting_key = section.from_value(CfgPropertyKey(setting_section, setting_name))
+	if setting_key is None:
+		throw_error(Messages.INVALID_SETTING_NAME, setting_name)
+
+	return setting_key
+
+
+# --- FUNCTIONS (ENGINE) ---
+
+def build_engine(engine_config, binaries):
+	if not O3DE_ENGINE_BUILD_DIR.exists() or is_directory_empty(O3DE_ENGINE_BUILD_DIR):
+		generate_engine_configurations
+
+	result = subprocess.run([
+		"cmake",
+		"--build", O3DE_ENGINE_BUILD_DIR,
+		"--config", engine_config.value,
+		"--target", ', '.join(binaries) if (binaries is not None) else "install"
+	])
+
+	if binaries is None:
+		required_paths = [ (pathlib.PurePath("python") / "runtime") ]
+
+		for path in required_paths:
+			from_path = O3DE_ENGINE_SOURCE_DIR / path
+			to_path = O3DE_ENGINE_INSTALL_DIR / path
+			
+			copy_all(from_path, to_path)
+		
+	return result.returncode
+
+
+def clean_engine(engine_config, remove_build, remove_install):
+	clean_dirs = []
+
+	if engine_config is not None:
+		if remove_build:
+			build_config_dir = get_build_config_path(O3DE_ENGINE_BUILD_DIR, engine_config)
+			clean_dirs.append(build_config_dir)
+
+		if remove_install:
+			install_config_dir = get_install_config_path(O3DE_ENGINE_INSTALL_DIR, engine_config)
+			clean_dirs.append(install_config_dir)
+
+	else:
+		if remove_build:
+			clean_dirs.append(O3DE_ENGINE_BUILD_DIR)
+
+		if remove_install:
+			clean_dirs.append(O3DE_ENGINE_INSTALL_DIR)
+
+	for clean_dir in clean_dirs:
+		clear_directory(clean_dir)
+
+
+def generate_engine_configurations():
+	result = subprocess.run([ O3DE_ENGINE_SOURCE_DIR / "python" / "get_python.sh" ])
+	if result.returncode != 0:
+		throw_error(Messages.UNCOMPLETED_REGISTRATION, error.returncode, "\n{}\n{}".format(error.stdout, error.stderr))
+
+	exit_code = generate_configurations(O3DE_ENGINE_SOURCE_DIR, O3DE_ENGINE_BUILD_DIR)
+	return exit_code
+
+
+# --- FUNCTIONS (PROJECT) ---
+
+def build_project(config, binary):
+	if binary == O3DE_ProjectBinaries.CLIENT:
+		target_name = "GameLauncher"
+
+	elif binary == O3DE_ProjectBinaries.SERVER:
+		target_name = "ServerLauncher"
+
+	else:
+		throw_error(Messages.INVALID_BINARY, binary.value)
+
+	if is_directory_empty(O3DE_PROJECT_SOURCE_DIR):
+		throw_error(Messages.PROJECT_DIR_EMPTY)
+
+	project_name = read_json_property(O3DE_PROJECT_SOURCE_DIR / "project.json", "project_name")
+	if project_name is None:
+		throw_error(Messages.INVALID_PROJECT_NAME)
+
+	try:
+		subprocess.run([ O3DE_CLI_FILE, "register", "--this-engine" ], stdout = subprocess.DEVNULL, check = True)
+		subprocess.run([ O3DE_CLI_FILE, "register", "--project-path", O3DE_PROJECT_SOURCE_DIR ], stdout = subprocess.DEVNULL, check = True)	
+
+	except subprocess.CalledProcessError as error:
+		throw_error(Messages.UNCOMPLETED_REGISTRATION, error.returncode, "\n{}\n{}".format(error.stdout, error.stderr))
+
+	if not O3DE_PROJECT_BUILD_DIR.is_dir() or is_directory_empty(O3DE_PROJECT_BUILD_DIR):
+		generate_configurations(O3DE_PROJECT_SOURCE_DIR, O3DE_PROJECT_BUILD_DIR)
+
+	result = subprocess.run([
+		"cmake",
+		"--build", O3DE_PROJECT_BUILD_DIR,
+		"--config", config.value,
+		"--target", "{}.{}".format(project_name, target_name)
+	])
+
+	return result.returncode
+
+
+def check_project_settings():
+	project_extra_dir = O3DE_PROJECT_SOURCE_DIR / PROJECT_EXTRA_PATH
+	if not project_extra_dir.exists():
+		project_extra_dir.mkdir(parents = True)
+	elif not project_extra_dir.is_dir():
+		throw_error(Messages.INVALID_DIRECTORY)
+
+	private_project_extra_dir = O3DE_PROJECT_SOURCE_DIR / PRIVATE_PROJECT_EXTRA_PATH
+	if not private_project_extra_dir.exists():
+		private_project_extra_dir.mkdir(parents = True)
+	elif not private_project_extra_dir.is_dir():
+		throw_error(Messages.INVALID_DIRECTORY)
+
+	public_project_extra_dir = O3DE_PROJECT_SOURCE_DIR / PUBLIC_PROJECT_EXTRA_PATH
+	if not public_project_extra_dir.exists():
+		public_project_extra_dir.mkdir(parents = True)
+	elif not public_project_extra_dir.is_dir():
+		throw_error(Messages.INVALID_DIRECTORY)
+
+	gitignore_file = project_extra_dir / ".gitignore"
+	if not gitignore_file.exists():
+		private_name = private_project_extra_dir.name
+		
+		gitignore_file.write_text(private_name + '/')
+
+
+def clean_project(config, force):
+	if force:
+		clear_directory(O3DE_PROJECT_BUILD_DIR)
+	else:
+		try:
+			subprocess.run([ O3DE_CLI_FILE, "register", "--this-engine" ], stdout = subprocess.DEVNULL, check = True)
+			subprocess.run([ O3DE_CLI_FILE, "register", "--project-path", O3DE_PROJECT_SOURCE_DIR ], stdout = subprocess.DEVNULL, check = True)	
+
+		except subprocess.CalledProcessError as error:
+			throw_error(Messages.UNCOMPLETED_REGISTRATION, error.returncode, "\n{}\n{}".format(error.stdout, error.stderr))
+
+		result = subprocess.run([
+			"cmake",
+			"--build", O3DE_PROJECT_BUILD_DIR,
+			"--config", config.value,
+			"--target", "clean"
+		])
+
+		return result.returncode
+
+
+def generate_project_configurations(project_name, engine_version):
+	if not is_directory_empty(O3DE_PROJECT_SOURCE_DIR):
+		throw_error(Messages.PROJECT_DIR_NOT_EMPTY)
+
+	result = subprocess.run([
+			O3DE_CLI_FILE, "create-project",
+			"--project-name", project_name,
+			"--project-path", O3DE_PROJECT_SOURCE_DIR
+		])
+
+	if result.returncode != 0:
+		throw_error(Messages.UNCOMPLETED_INIT_PROJECT)
+
+	write_project_setting(Settings.ENGINE.value, None, engine_version)
+
+
+def read_project_setting(setting_section, setting_name):
+	project_extra_dir = O3DE_PROJECT_SOURCE_DIR / PROJECT_EXTRA_PATH
+	if not project_extra_dir.is_dir():
+		throw_error(Messages.SETTINGS_NOT_FOUND)
+
+	required_setting_keys = []
+	if setting_name is not None:
+		setting_key = get_setting_key(setting_section, setting_name)
+		required_setting_keys.append(setting_key)
+
+	else:
+		if (setting_section == Settings.ENGINE.value) or (setting_section is None):
+			for setting_key in EngineSettings:
+				required_setting_keys.append(setting_key)
+
+	if len(required_setting_keys) == 0:
+		throw_error(Messages.INVALID_SETTING_SECTION, setting_section)
+
+	for setting_key in required_setting_keys:
+		settings_file = select_project_settings_file(O3DE_PROJECT_SOURCE_DIR, setting_key)
+		setting_value = read_cfg_property(settings_file, setting_key)
+		if setting_value is None:
+			setting_value = ''
+
+		if setting_name is not None:
+			print_msg(Level.INFO, setting_value)
+		else:
+			print_msg(Level.INFO, "{} = {}".format(print_setting(setting_key), setting_value))
+
+
+def write_project_setting(setting_section, setting_name, setting_value, show_preview = False):
+	new_settings = {}
+	if setting_name is not None:
+		setting_key = get_setting_key(setting_section, setting_name)
+		new_settings[setting_key] = setting_value
+
+	else:
+		if setting_section == Settings.ENGINE.value:
+			new_settings[EngineSettings.VERSION] = setting_value
+
+			if setting_value is not None:
+				result_type, repository = get_engine_repository_from_source(O3DE_ENGINE_SOURCE_DIR)
+				if result_type is not RepositoryResultType.OK:
+					throw_error(Messages.INVALID_REPOSITORY)
+			else:
+				repository = Repository(None, None, None)
+
+			new_settings[EngineSettings.REPOSITORY] = repository.url
+			new_settings[EngineSettings.BRANCH] = repository.branch
+			new_settings[EngineSettings.REVISION] = repository.revision
+
+		else:
+			throw_error(Messages.INVALID_SETTING_SECTION, setting_section)
+
+	if len(new_settings) == 0:
+		return True
+
+	changed_settings = {}
+	for setting_key, new_setting_value in new_settings.items():
+		settings_file = select_project_settings_file(O3DE_PROJECT_SOURCE_DIR, setting_key)
+		current_setting_value = read_cfg_property(settings_file, setting_key)
+
+		if new_setting_value == current_setting_value:
+			continue
+
+		changed_settings[setting_key] = (settings_file, current_setting_value, new_setting_value)
+
+	if len(changed_settings) == 0:
+		return True
+
+	if show_preview:
+		print_msg(Level.INFO, Messages.CHANGED_SETTINGS)
+
+		for setting_key, change in changed_settings.items():
+			settings_file, current_setting_value, new_setting_value = change
+
+			print_msg(Level.INFO, "- {}: {} -> {}".format(
+				print_setting(setting_key),
+				(current_setting_value if current_setting_value is not None else "<empty>"),
+				(new_setting_value if new_setting_value is not None else "<empty>")
+			))
+
+		print_msg(Level.INFO, '')
+		if not ask_for_confirmation(Messages.SAVE_QUESTION):
+			return False
+
+	check_project_settings()
+
+	for setting_key, change in changed_settings.items():
+		settings_file, current_setting_value, new_setting_value = change
+		write_cfg_property(settings_file, setting_key, new_setting_value)
+
+
+# --- MAIN ---
+
+def main():
+	if DEVELOPMENT_MODE:
+		print_msg(Level.WARNING, Messages.IS_DEVELOPMENT_MODE)
+
+	if len(sys.argv) < 2:
+		throw_error(Messages.EMPTY_COMMAND)
+
+	command = deserialize_arg(1, BuilderCommands)
+	target = deserialize_arg(2, Targets)
+
+	if command is None:
+		throw_error(Messages.INVALID_COMMAND, sys.argv[1])
+
+	elif target is None:
+		throw_error(Messages.INVALID_TARGET, sys.argv[2])
+
+	elif command == BuilderCommands.BUILD:
+		config = deserialize_arg(3, O3DE_Configs)
+		
+		if target == Targets.ENGINE:
+			binaries = deserialize_args(4) if len(sys.argv) > 4 else None
+			
+			build_engine(config, binaries)
+	
+		elif target == Targets.PROJECT:
+			binary = deserialize_arg(4, O3DE_ProjectBinaries)
+
+			exit_code = build_project(config, binary)
+			if exit_code != 0:
+				exit(exit_code)
+
+		else:
+			throw_error(Messages.INVALID_TARGET, target.value)
+
+	elif command == BuilderCommands.CLEAN:
+		if target == Targets.ENGINE:
+			binaries = deserialize_args(4) if len(sys.argv) > 4 else None
+			
+			config = deserialize_arg(3, O3DE_Configs)
+			remove_build = deserialize_arg(4, bool)
+			remove_install = deserialize_arg(5, bool)
+
+			exit_code = clean_engine(config, remove_build, remove_install)
+			if exit_code != 0:
+				exit(exit_code)
+
+		elif target == Targets.PROJECT:
+			config = deserialize_arg(3, O3DE_Configs)
+			force= deserialize_arg(4, bool)
+			
+			exit_code = clean_project(config, force)
+			if exit_code != 0:
+				exit(exit_code)
+			
+		else:
+			throw_error(Messages.INVALID_TARGET, target.value)
+
+	elif command == BuilderCommands.INIT:
+		if target == Targets.ENGINE:
+			generate_engine_configurations()
+
+		elif target == Targets.PROJECT:
+			project_name = deserialize_arg(3, str)
+			engine_version = deserialize_arg(4, str)
+
+			generate_project_configurations(project_name, engine_version)
+
+		else:
+			throw_error(Messages.INVALID_TARGET, target.value)
+
+	elif command == BuilderCommands.SETTINGS:
+		if target == Targets.PROJECT:
+			setting_section = deserialize_arg(3, str)
+			setting_name = deserialize_arg(4, str)
+			setting_value = deserialize_arg(5, str)
+			clear = deserialize_arg(6, bool)
+
+			if clear:
+				write_project_setting(setting_section, setting_name, None, False)
+			elif setting_value is None:
+				read_project_setting(setting_section, setting_name)
+			else:
+				preview = deserialize_arg(7, bool)
+				if preview is None:
+					preview = False
+
+				write_project_setting(setting_section, setting_name, setting_value, preview)
+
+		else:
+			throw_error(Messages.INVALID_TARGET, target.value)
+
+	elif command == RunnerCommands.RUN:
+		binary = deserialize_arg(2, O3DE_ProjectBinaries)
+		config = deserialize_arg(3, O3DE_Configs)
+
+		run_project(binary, config)
+
+	else:
+		throw_error(Messages.INVALID_COMMAND, command.value)
+
+
+if __name__ == "__main__":
+	main()

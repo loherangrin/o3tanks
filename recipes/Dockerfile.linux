@@ -1,0 +1,292 @@
+# Copyright 2021 Matteo Grasso
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+
+FROM ubuntu:20.04 AS base_focal
+
+RUN export DEBIAN_FRONTEND=noninteractive \
+ && apt-get update && apt-get install -y --no-install-recommends \
+       locales \
+       python3 \
+ && rm -rf /var/lib/apt/lists/* \
+ && sed --in-place --regexp-extended 's/^#[[:space:]]*(en_US.UTF-8 UTF-8)$/\1/g' /etc/locale.gen \
+ && locale-gen
+ 
+ENV LANG en_US.UTF-8
+ENV LANGUAGE en_US:en
+ENV LC_ALL en_US.UTF-8
+
+ARG USER_NAME=user
+ARG USER_UID=1000
+ARG USER_GROUP=${USER_NAME}
+ARG USER_GID=${USER_UID}
+RUN addgroup \
+		--gid "${USER_GID}" \
+		"${USER_GROUP}" \
+ && adduser \
+ 		--uid "${USER_UID}" \
+		--gid "${USER_GID}" \
+		--gecos "${USER_NAME},,," \
+		--disabled-password \
+		"${USER_NAME}"
+
+ARG USER_HOME=/home/${USER_NAME}
+ENV O3DE_DIR=${USER_HOME}/o3de
+
+ENV O3DE_ENGINE_DIR=${O3DE_DIR}/engine
+ENV O3DE_PACKAGES_DIR=${O3DE_DIR}/packages
+ENV O3DE_PROJECT_DIR=${O3DE_DIR}/project
+
+ENV O3TANKS_DIR=${USER_HOME}/o3tanks
+
+RUN mkdir --parents "${O3DE_ENGINE_DIR}" \
+ && mkdir --parents "${O3DE_PACKAGES_DIR}" \
+ && mkdir --parents "${O3DE_PROJECT_DIR}" \
+ && mkdir --parents "${O3TANKS_DIR}" \
+ && chown --recursive ${USER_NAME}:${USER_GROUP} "${O3DE_DIR}" \
+ && chown --recursive ${USER_NAME}:${USER_GROUP} "${O3TANKS_DIR}"
+
+WORKDIR ${USER_HOME}
+
+# ---
+
+FROM base_focal AS scripts_focal
+
+RUN export DEBIAN_FRONTEND=noninteractive \
+ && apt-get update && apt-get install -y --no-install-recommends \
+	   python3-pip \
+	   python3-setuptools \
+ && rm -rf /var/lib/apt/lists/*
+
+# ---
+
+FROM scripts_focal AS cli_dev
+
+ENTRYPOINT [ "python3", "-u", "-m", "o3tanks.cli" ]
+
+RUN pip3 install --no-cache-dir \
+		docker \
+		six
+
+
+FROM cli_dev AS cli
+
+ARG USER_NAME=user
+ARG USER_GROUP=${USER_NAME}
+
+ARG O3TANKS_SCRIPTS_DIR="o3tanks"
+COPY --chown=${USER_NAME}:${USER_GROUP} "${O3TANKS_SCRIPTS_DIR}/globals" "${O3TANKS_DIR}/globals"
+COPY --chown=${USER_NAME}:${USER_GROUP} "${O3TANKS_SCRIPTS_DIR}/utils" "${O3TANKS_DIR}/utils"
+COPY --chown=${USER_NAME}:${USER_GROUP} [ \
+	"${O3TANKS_SCRIPTS_DIR}/__init__.py", \
+	"${O3TANKS_SCRIPTS_DIR}/builder.py", \
+	"${O3TANKS_SCRIPTS_DIR}/cli.py", \
+	"${O3TANKS_SCRIPTS_DIR}/runner.py", \
+	"${O3TANKS_SCRIPTS_DIR}/updater.py", \
+	\
+	"${O3TANKS_DIR}/" ]
+COPY --chown=${USER_NAME}:${USER_GROUP} "Dockerfile.linux" "${O3TANKS_DIR}/../"
+
+RUN cd "${O3TANKS_DIR}/.." \
+ && ARCHIVE_FILE="context.tar" \
+ && tar --create --file "${ARCHIVE_FILE}" --verbose "${O3TANKS_SCRIPTS_DIR}" "Dockerfile.linux" \
+ && rm "${O3TANKS_SCRIPTS_DIR}/builder.py" \
+ && rm "${O3TANKS_SCRIPTS_DIR}/runner.py" \
+ && rm "${O3TANKS_SCRIPTS_DIR}/updater.py" \
+ && rm "Dockerfile.linux" \
+ && mv "${ARCHIVE_FILE}" "${O3TANKS_SCRIPTS_DIR}" \
+ && python3 -m compileall -f -d "${O3TANKS_DIR}" "${O3TANKS_SCRIPTS_DIR}" \
+ && chown --recursive ${USER_NAME}:${USER_GROUP} "${O3TANKS_DIR}"
+
+# ---
+
+FROM scripts_focal AS updater_dev
+
+ENTRYPOINT [ "python3", "-u", "-m", "o3tanks.updater" ]
+
+RUN pip3 install --no-cache-dir \
+		pygit2
+
+USER user
+
+
+FROM updater_dev AS updater
+
+ARG USER_NAME=user
+ARG USER_GROUP=${USER_NAME}
+ARG O3TANKS_SCRIPTS_DIR="o3tanks"
+COPY --chown=${USER_NAME}:${USER_GROUP} "${O3TANKS_SCRIPTS_DIR}/globals" "${O3TANKS_DIR}/globals"
+COPY --chown=${USER_NAME}:${USER_GROUP} "${O3TANKS_SCRIPTS_DIR}/utils" "${O3TANKS_DIR}/utils"
+COPY --chown=${USER_NAME}:${USER_GROUP} [ \
+	"${O3TANKS_SCRIPTS_DIR}/__init__.py", \
+	"${O3TANKS_SCRIPTS_DIR}/updater.py", \
+	\
+	"${O3TANKS_DIR}/" ]
+RUN python3 -m compileall -f -d "${O3TANKS_DIR}" "${O3TANKS_SCRIPTS_DIR}"
+
+# ---
+
+FROM ubuntu:18.04 AS base_bionic
+
+RUN export DEBIAN_FRONTEND=noninteractive \
+ && apt-get update && apt-get install -y --no-install-recommends \
+       locales \
+       python3 \
+ && rm -rf /var/lib/apt/lists/* \
+ && sed --in-place --regexp-extended 's/^#[[:space:]]*(en_US.UTF-8 UTF-8)$/\1/g' /etc/locale.gen \
+ && locale-gen
+ 
+ENV LANG en_US.UTF-8
+ENV LANGUAGE en_US:en
+ENV LC_ALL en_US.UTF-8
+
+ARG USER_NAME=user
+ARG USER_UID=1000
+ARG USER_GROUP=${USER_NAME}
+ARG USER_GID=${USER_UID}
+RUN addgroup \
+		--gid "${USER_GID}" \
+		"${USER_GROUP}" \
+ && adduser \
+ 		--uid "${USER_UID}" \
+		--gid "${USER_GID}" \
+		--gecos "${USER_NAME},,," \
+		--disabled-password \
+		"${USER_NAME}"
+
+ARG USER_HOME=/home/${USER_NAME}
+ENV O3DE_DIR=${USER_HOME}/o3de
+
+ENV O3DE_ENGINE_DIR=${O3DE_DIR}/engine
+ENV O3DE_PACKAGES_DIR=${O3DE_DIR}/packages
+ENV O3DE_PROJECT_DIR=${O3DE_DIR}/project
+
+ENV O3TANKS_DIR=${USER_HOME}/o3tanks
+
+RUN mkdir --parents "${O3DE_ENGINE_DIR}" \
+ && mkdir --parents "${O3DE_PACKAGES_DIR}" \
+ && mkdir --parents "${O3DE_PROJECT_DIR}" \
+ && mkdir --parents "${O3TANKS_DIR}" \
+ && chown --recursive ${USER_NAME}:${USER_GROUP} "${O3DE_DIR}" \
+ && chown --recursive ${USER_NAME}:${USER_GROUP} "${O3TANKS_DIR}"
+
+WORKDIR ${USER_HOME}
+
+# ---
+
+FROM base_bionic AS runtime_dependencies
+
+RUN export DEBIAN_FRONTEND=noninteractive \
+ && apt-get update && apt-get install -y --no-install-recommends \
+		libatomic1 \
+		libcurl4 \
+		libxcb1 \
+		libvulkan1 \
+ && rm -rf /var/lib/apt/lists/*
+
+# ---
+
+FROM runtime_dependencies AS runner_dev
+
+ENTRYPOINT [ "python3", "-u", "-m", "o3tanks.runner" ]
+
+USER user
+
+
+FROM runner_dev AS runner
+
+ARG USER_NAME=user
+ARG USER_GROUP=${USER_NAME}
+ARG O3TANKS_SCRIPTS_DIR="o3tanks"
+COPY --chown=${USER_NAME}:${USER_GROUP} "${O3TANKS_SCRIPTS_DIR}/globals" "${O3TANKS_DIR}/globals"
+COPY --chown=${USER_NAME}:${USER_GROUP} "${O3TANKS_SCRIPTS_DIR}/utils" "${O3TANKS_DIR}/utils"
+COPY --chown=${USER_NAME}:${USER_GROUP} [ \
+	"${O3TANKS_SCRIPTS_DIR}/__init__.py", \
+	"${O3TANKS_SCRIPTS_DIR}/runner.py", \
+	\
+	"${O3TANKS_DIR}/" ]
+RUN python3 -m compileall -f -d "${O3TANKS_DIR}" "${O3TANKS_SCRIPTS_DIR}"
+
+# ---
+
+FROM ubuntu:20.04 AS cmake_downloader
+
+RUN export DEBIAN_FRONTEND=noninteractive \
+ && apt-get update && apt-get install -y --no-install-recommends \
+		ca-certificates \
+		gnupg \
+		wget \
+ && rm -rf /var/lib/apt/lists/*	\
+ && wget --quiet -O - https://apt.kitware.com/keys/kitware-archive-latest.asc  | gpg --dearmor - > /tmp/keyring.gpg
+
+# ---
+
+FROM runtime_dependencies AS development_dependencies
+
+RUN export DEBIAN_FRONTEND=noninteractive \
+ && apt-get update && apt-get install -y --no-install-recommends \
+		build-essential \
+		ninja-build \
+		clang-6.0 \
+		uuid-dev \
+		libz-dev \
+		libncurses5-dev \
+		libcurl4-openssl-dev \
+		mesa-common-dev \
+		libglu1-mesa-dev \
+		libjpeg-dev \
+		libjbig-dev \
+		libsdl2-dev \
+		libxcb-xinerama0 \
+		libxcb-xinput0 \
+		libfontconfig1-dev \
+		libopus-dev \
+		libwebp-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+ARG KEYRING_PATH=/usr/share/keyrings/kitware-archive-keyring.gpg
+COPY --from=cmake_downloader /tmp/keyring.gpg ${KEYRING_PATH}
+RUN export DEBIAN_FRONTEND=noninteractive \
+ && apt-get update && apt-get install -y --no-install-recommends \
+		ca-certificates \
+ && echo "deb [signed-by=${KEYRING_PATH}] https://apt.kitware.com/ubuntu bionic main" > /etc/apt/sources.list.d/kitware.list \
+ && apt-get update && apt-get install -y --no-install-recommends \
+ 		cmake \
+ && rm -rf /var/lib/apt/lists/*
+
+#---
+
+FROM development_dependencies AS builder_dev
+
+ENTRYPOINT [ "python3", "-u", "-m", "o3tanks.builder" ]
+
+USER user
+
+
+FROM builder_dev AS builder
+
+ARG USER_NAME=user
+ARG USER_GROUP=${USER_NAME}
+ARG O3TANKS_SCRIPTS_DIR="o3tanks"
+RUN mkdir --parents "${O3DE_ENGINE_DIR}/build" \
+ && mkdir --parents "${O3DE_ENGINE_DIR}/install"
+
+COPY --chown=${USER_NAME}:${USER_GROUP} "${O3TANKS_SCRIPTS_DIR}/globals" "${O3TANKS_DIR}/globals"
+COPY --chown=${USER_NAME}:${USER_GROUP} "${O3TANKS_SCRIPTS_DIR}/utils" "${O3TANKS_DIR}/utils"
+COPY --chown=${USER_NAME}:${USER_GROUP} [ \
+	"${O3TANKS_SCRIPTS_DIR}/__init__.py", \
+	"${O3TANKS_SCRIPTS_DIR}/builder.py", \
+	\
+	"${O3TANKS_DIR}/" ]
+RUN python3 -m compileall -f -d "${O3TANKS_DIR}" "${O3TANKS_SCRIPTS_DIR}"
