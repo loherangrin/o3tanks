@@ -24,6 +24,8 @@ Features:
 
 ## Quick Start
 
+> More detailed instructions are available in the [Get Started](https://github.com/loherangrin/o3tanks/wiki/get-started) page.
+
 Install the latest engine version from the official repository:
 ```
 o3tanks install development
