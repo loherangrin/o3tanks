@@ -120,7 +120,7 @@ def read_json_property(file, key):
 	if not file.is_file():
 		return None
 
-	data = json.loads(file.read_bytes(), parse_float = True, parse_int = True)
+	data = json.loads(file.read_bytes())
 
 	value = data.get(key)
 	if len(value) == 0:

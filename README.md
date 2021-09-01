@@ -1,7 +1,7 @@
 # O3TANKS
 ![O3Tanks Logo](./logo.png)
 
-o3tanks is a version manager for [O3DE (Open 3D Engine)](https://o3de.org) to handle multiple engine installations. It relies on containers to reduce dependencies on the host machine, easing the creation of portable development environments or the addition into CI/CD pipelines.
+O3Tanks is a version manager for [O3DE (Open 3D Engine)](https://o3de.org) to handle multiple engine installations. It relies on containers to reduce dependencies on the host machine, easing the creation of portable development environments or the addition into CI/CD pipelines.
 
 Features:
 - Download, build and install engine versions from any Git repository (official or forks).
@@ -17,7 +17,7 @@ Features:
    - Linux-based operating system with a POSIX-compliant shell.
    - Docker Engine 19.03 (or greater), both root and rootless mode are supported. See [official documentation](https://docs.docker.com/get-docker/) for installation details.
 2. Clone this repository into a directory of your choice.
-3. (Optional) Register o3tanks globally creating a symbolic link to the main shell script:
+3. (Optional) Register `o3tanks` globally creating a symbolic link to the main shell script:
    ```
    sudo ln -s <YOUR_O3TANKS_DIR>/o3tanks.sh /usr/local/bin/o3tanks
    ```
@@ -63,7 +63,7 @@ Please refer to the [main documentation](https://github.com/loherangrin/o3tanks/
 
 ## Update
 
-After the first installation, o3tanks is able to update itself downloading the latest files from the repository where it was installed from:
+After the first installation, O3Tanks is able to update itself downloading the latest files from the repository where it was installed from:
 ```
 o3tanks refresh self
 o3tanks upgrade self
@@ -73,7 +73,7 @@ o3tanks upgrade self
 
 We are happy to receive your feeback! Please open an issue in [our tracker](https://github.com/loherangrin/o3tanks/issues) if you would like to propose a new feature or you have encountered any error.
 
-To get involved in the development of o3tanks, please refer to our [contribution guidelines](./CONTRIBUTING.md).
+To get involved in the development of O3Tanks, please refer to our [contribution guidelines](./CONTRIBUTING.md).
 
 ## License
 

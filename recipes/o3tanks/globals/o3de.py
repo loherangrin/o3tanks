@@ -38,7 +38,7 @@ class O3DE_ProjectBinaries(ObjectEnum):
 O3DE_REPOSITORY_HOST = "https://github.com"
 O3DE_REPOSITORY_URL = O3DE_REPOSITORY_HOST + "/o3de/o3de.git"
 
-O3DE_ROOT_DIR = init_from_env("O3DE_DIR", pathlib.Path, pathlib.PosixPath("/home/" + USER_NAME + "/o3de"))
+O3DE_ROOT_DIR = init_from_env("O3DE_DIR", pathlib.Path, pathlib.PosixPath("/home/{}/o3de".format(USER_NAME)))
 
 O3DE_ENGINE_SOURCE_DIR = init_from_env("O3DE_ENGINE_DIR", pathlib.Path, O3DE_ROOT_DIR / "engine")
 O3DE_ENGINE_REPOSITORY_DIR = O3DE_ENGINE_SOURCE_DIR / ".git"

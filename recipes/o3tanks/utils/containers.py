@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from ..globals.o3tanks import DEVELOPMENT_MODE, USER_NAME, USER_GROUP, VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH
+from ..globals.o3tanks import DEVELOPMENT_MODE, REAL_USER, USER_NAME, USER_GROUP, VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH
 from .filesystem import is_directory_empty
 from .input_output import Level, Messages, get_verbose, print_msg, throw_error
 from .serialization import serialize_list
@@ -56,17 +56,37 @@ def close_container_client():
 		DOCKER_CLIENT.close()
 
 
-def get_container_user():
-	if is_in_container():
-		user_info =  pwd.getpwnam(USER_NAME)
-		group_info = grp.getgrgid(user_info.pw_uid)
+def get_build_arguments():
+	container_user = get_container_user()
 
-		container_user = User(user_info.pw_name, group_info.gr_name, user_info.pw_uid, group_info.gr_gid)
+	return {
+		"USER_NAME": container_user.name,
+		"USER_GROUP": container_user.group,
+		"USER_UID": str(container_user.uid),
+		"USER_GID": str(container_user.gid)
+	}
+
+
+def get_container_user(user_namespace = True):
+	if is_in_container():
+		if user_namespace:
+			user_info =  pwd.getpwnam(USER_NAME)
+			group_info = grp.getgrgid(user_info.pw_uid)
+
+			container_uid = user_info.pw_uid
+			container_gid = group_info.gr_gid
+
+		else:
+			container_uid = REAL_USER.uid
+			container_gid = REAL_USER.gid
 
 	else:
-		host_user = get_container_user()
+		host_user = get_current_user()
 
-		if is_rootless_runtime():
+		if is_rootless_runtime() and not user_namespace:
+			container_uid = None
+			container_gid = None
+
 			user_pattern = re.compile(r"^{}:(\d+):\d+$".format(host_user.name))
 			with open("/etc/subuid") as subuid_handler:
 				for entry in subuid_handler:
@@ -82,13 +102,15 @@ def get_container_user():
 					if matches is not None:
 						container_gid = matches.group(1)
 						break
+
+			if (container_uid is None) or (container_gid is None):
+				throw_error(Messages.INVALID_USER_NAMESPACE)
+
 		else:
 			container_uid = host_user.uid
 			container_gid = host_user.gid
 
-		container_user = User(USER_NAME, USER_GROUP, container_uid, container_gid)
-
-	return container_user
+	return User(USER_NAME, USER_GROUP, container_uid, container_gid)
 
 
 def get_current_user():
@@ -277,10 +299,10 @@ def build_image_from_archive(tar_file, image_name, recipe, stage = None):
 
 	print_msg(Level.INFO, Messages.BUILD_IMAGE_FROM_ARCHIVE, image_name, tar_file)
 
-	try:
-		if image_name.endswith(":development"):
-			stage += "_dev"
+	if image_name.endswith(":development"):
+		stage += "_dev"
 
+	try:
 		with tar_file.open() as tar_handler:
 			tar_handler.seek(0)
 
@@ -289,7 +311,8 @@ def build_image_from_archive(tar_file, image_name, recipe, stage = None):
 				dockerfile = recipe,
 				custom_context = True,		
 				tag = image_name,
-				target = stage
+				target = stage,
+				buildargs = get_build_arguments()
 			)
 
 			print_string_stream(logs)
@@ -310,15 +333,16 @@ def build_image_from_directory(context_dir, image_name, recipe, stage = None):
 
 	print_msg(Level.INFO, Messages.BUILD_IMAGE_FROM_DIRECTORY, image_name, context_dir)
 
-	try:
-		if image_name.endswith(":development"):
-			stage += "_dev"
+	if image_name.endswith(":development"):
+		stage += "_dev"
 
+	try:
 		new_image, logs = DOCKER_CLIENT.images.build(
 			path = str(context_dir),
 			dockerfile = str(context_dir / recipe),
 			tag = image_name,
-			target = stage
+			target = stage,
+			buildargs = get_build_arguments()
 		)
 
 		print_string_stream(logs)

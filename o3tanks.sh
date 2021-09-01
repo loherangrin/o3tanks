@@ -34,6 +34,10 @@ get_message_text()
 			echo "Unable to resolve a broken symlink: %s"
 			;;
 
+		("${MESSAGES_INVALID_USER_NAMESPACE}")
+			echo "Unable to calculate the user namespace for the container user"
+			;;
+
 		("${MESSAGES_MISSING_DOCKER}")
 			echo "Unable to find 'docker'"
 			;;
@@ -161,6 +165,10 @@ build_image()
 		--tag "${image_tag}" \
 		${stage_option} \
 		--file "${context_dir}/Dockerfile.linux" \
+		--build-arg USER_NAME="${USER_NAME}" \
+		--build-arg USER_GROUP="${USER_GROUP}" \
+		--build-arg USER_UID="${USER_UID}" \
+		--build-arg USER_GID="${USER_GID}" \
 		"${context_dir}"
 }
 
@@ -208,6 +216,15 @@ image_exists()
 	return 0
 }
 
+is_rootless_runtime()
+{
+	if docker info --format '{{ .SecurityOptions }}' | grep --quiet 'rootless' ; then
+		return 0
+	fi
+
+	return 1
+}
+
 # --- FILESYSTEM FUNCTIONS ---
 
 to_absolute_path()
@@ -242,6 +259,18 @@ to_absolute_path()
 }
 
 # --- INTERNAL FUNCTIONS ---
+
+calculate_user_namespace()
+{
+	local subid_type="${1}"
+	local parent_name="${2}"
+
+	local starting_subid
+	starting_subid=$(cat "/etc/sub${subid_type}id" | awk -F ':' "/^${parent_name}:[0-9]+:[0-9]+\$/{print \$2;exit}")
+
+	echo "${starting_subid}"
+	return 0
+}
 
 check_docker()
 {
@@ -288,7 +317,7 @@ init_globals()
 	readonly ERROR=4
 
 	local bin_file
-	bin_file=$(to_absolute_path "${0}" "true")
+	bin_file=$(to_absolute_path "${0}" 'true')
 	if ! [ -f "${bin_file}" ]; then
 		throw_error "${MESSAGES_INVALID_SYMLINK}" "${0}"
 	fi
@@ -319,9 +348,10 @@ init_globals()
 	readonly MESSAGES_BIN_DIR_NOT_FOUND=1
 	readonly MESSAGES_INVALID_DIRECTORY=2
 	readonly MESSAGES_INVALID_SYMLINK=3
-	readonly MESSAGES_MISSING_DOCKER=4
-	readonly MESSAGES_MISSING_PYTHON=5
-	readonly MESSAGE_VOLUMES_DIR_NOT_FOUND=6
+	readonly MESSAGES_INVALID_USER_NAMESPACE=4
+	readonly MESSAGES_MISSING_DOCKER=5
+	readonly MESSAGES_MISSING_PYTHON=6
+	readonly MESSAGE_VOLUMES_DIR_NOT_FOUND=7
 
 	readonly SHORT_OPTION_PROJECT='p'
 	readonly LONG_OPTION_PROJECT='project'
@@ -330,20 +360,65 @@ init_globals()
 	no_run_cli_container=$(is_env_active "${O3TANKS_NO_CLI_CONTAINER:-}")
 	readonly RUN_CONTAINERS_CLI=$(not_bool_string "${no_run_cli_container}")
 
+	local host_user_name
+	local host_user_group
+	local host_user_uid
+	local host_user_gid
+	host_user_name=$(id --user --real --name)
+	host_user_group=$(id --group --real --name)
+	host_user_uid=$(id --user --real)
+	host_user_gid=$(id --group --real)
+	readonly HOST_USER_NAME="${host_user_name}"
+	readonly HOST_USER_GROUP="${host_user_group}"
+	readonly HOST_USER_GID="${host_user_gid}"
+	readonly HOST_USER_UID="${host_user_uid}"
+
 	readonly USER_NAME='user'
+	readonly USER_GROUP="${USER_NAME}"
+	readonly USER_UID="${host_user_uid}"
+	readonly USER_GID="${host_user_gid}"
+
+	local real_user_name
+	local real_user_group
+	local real_user_uid
+	local real_user_gid
+	if is_rootless_runtime ; then
+		real_user_name='o3tanks'
+		real_user_group="${real_user_name}"
+
+		local starting_subuid
+		local starting_subgid
+		starting_subuid=$(calculate_user_namespace 'u' "${HOST_USER_NAME}")
+		starting_subgid=$(calculate_user_namespace 'g' "${HOST_USER_GROUP}")
+		if [ -z "${starting_subuid}" ] || [ -z "${starting_subgid}" ]; then
+			throw_error "${MESSAGES_INVALID_USER_NAMESPACE}"
+		fi
+
+		real_user_uid=$((starting_subuid+host_user_uid-1))
+		real_user_gid=$((starting_subgid+host_user_gid-1))
+	else
+		real_user_name="${HOST_USER_NAME}"
+		real_user_group="${HOST_USER_GROUP}"
+		real_user_uid="${HOST_USER_UID}"
+		real_user_gid="${HOST_USER_GID}"
+	fi
+	readonly REAL_USER_NAME="${real_user_name}"
+	readonly REAL_USER_GROUP="${real_user_group}"
+	readonly REAL_USER_UID="${real_user_uid}"
+	readonly REAL_USER_GID="${real_user_gid}"
 
 	readonly O3DE_ROOT_DIR="/home/${USER_NAME}/o3de"
 	readonly O3DE_PROJECT_DIR="${O3DE_ROOT_DIR}/project"
 
-	readonly RECIPES_PATH="recipes"
+	readonly RECIPES_PATH='recipes'
 	readonly SCRIPTS_PATH="${RECIPES_PATH}/o3tanks"
 
 	readonly RECIPES_DIR="/home/${USER_NAME}/o3tanks_recipes"
 	readonly SCRIPTS_DIR="/home/${USER_NAME}/o3tanks"
 
-	readonly VERSION_MAJOR="0"
-	readonly VERSION_MINOR="1"
-	readonly VERSION_PATCH="0"
+	readonly VERSION_MAJOR='0'
+	readonly VERSION_MINOR='1'
+	readonly VERSION_PATCH='0'
 }
 
 run_cli()
@@ -359,12 +434,9 @@ run_cli()
 	check_docker
 	check_cli
 
-	local current_uid
-	current_uid=$(id --user --real)
-
-	local docker_socket="/var/run/user/${current_uid}/docker.sock"
+	local docker_socket="/run/user/${HOST_USER_UID}/docker.sock"
 	if ! [ -S "${docker_socket}" ]; then
-		docker_socket="/var/run/docker.sock"
+		docker_socket="/run/docker.sock"
 
 		if ! [ -S "${docker_socket}" ]; then
 			throw_error "${MESSAGES_MISSING_DOCKER}"
@@ -450,8 +522,12 @@ run_cli()
 
 	docker run --rm ${it_options} \
 		--network=none \
-		--mount "type=bind,source=${docker_socket},destination=/var/run/docker.sock" \
+		--mount "type=bind,source=${docker_socket},destination=/run/docker.sock" \
 		--mount "type=bind,source=${docker_volumes_dir},destination=/var/lib/docker/volumes" \
+		--env O3TANKS_REAL_USER_NAME="${REAL_USER_NAME}" \
+		--env O3TANKS_REAL_USER_GROUP="${REAL_USER_GROUP}" \
+		--env O3TANKS_REAL_USER_UID="${REAL_USER_UID}" \
+		--env O3TANKS_REAL_USER_GID="${REAL_USER_GID}" \
 		${dev_env} \
 		${dev_mount} \
 		${project_mount} \

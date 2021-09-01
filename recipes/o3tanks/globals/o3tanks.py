@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from ..utils.types import AutoEnum, CfgPropertyKey, ObjectEnum
+from ..utils.types import AutoEnum, CfgPropertyKey, ObjectEnum, User
 import os
 import pathlib
 
@@ -77,7 +77,7 @@ class LongOptions(ObjectEnum):
 	HELP = CliCommands.HELP.value
 	PROJECT = "project"
 	QUIET = "quiet"
-	REBUILD = "rebuild"
+	SKIP_REBUILD = "no-rebuild"
 	REMOVE_BUILD = "remove-build"
 	REMOVE_INSTALL = "remove-install"
 	REPOSITORY = "repository"
@@ -146,7 +146,14 @@ PRIVATE_PROJECT_SETTINGS_PATH = PRIVATE_PROJECT_EXTRA_PATH / "settings.cfg"
 USER_NAME = "user"
 USER_GROUP = USER_NAME
 
-ROOT_DIR = init_from_env("O3TANKS_DIR", pathlib.Path, pathlib.PosixPath("/home/" + USER_NAME + "/o3tanks"))
+REAL_USER = User(
+	init_from_env("O3TANKS_REAL_USER_NAME", str, None),
+	init_from_env("O3TANKS_REAL_USER_GROUP", str, None),
+	init_from_env("O3TANKS_REAL_USER_UID", int, None),
+	init_from_env("O3TANKS_REAL_USER_GID", int, None)
+)
+
+ROOT_DIR = init_from_env("O3TANKS_DIR", pathlib.Path, pathlib.PosixPath("/home/{}/o3tanks".format(USER_NAME)))
 RECIPES_PATH = pathlib.PurePath("recipes")
 SCRIPTS_PATH = RECIPES_PATH / "o3tanks"
 

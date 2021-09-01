@@ -27,19 +27,27 @@ ENV LANG en_US.UTF-8
 ENV LANGUAGE en_US:en
 ENV LC_ALL en_US.UTF-8
 
-ARG USER_NAME=user
-ARG USER_UID=1000
-ARG USER_GROUP=${USER_NAME}
-ARG USER_GID=${USER_UID}
-RUN addgroup \
-		--gid "${USER_GID}" \
-		"${USER_GROUP}" \
- && adduser \
- 		--uid "${USER_UID}" \
-		--gid "${USER_GID}" \
-		--gecos "${USER_NAME},,," \
-		--disabled-password \
-		"${USER_NAME}"
+ARG USER_NAME
+ARG USER_GROUP
+ARG USER_UID
+ARG USER_GID
+RUN if [ -z "${USER_NAME}" ] || [ -z "${USER_GROUP}" ] || [ -z "${USER_UID}" ] || [ -z "${USER_GID}" ]; then \
+		echo 'ERROR: At least one user property is missing. Please check your --build-arg values' \
+	 && exit 1 \
+  ; fi \
+ && if [ ${USER_GID} -gt 0 ]; then \
+ 		addgroup \
+			--gid "${USER_GID}" \
+			"${USER_GROUP}" \
+  ; fi \
+ && if [ ${USER_UID} -gt 0 ]; then \
+		adduser \
+ 			--uid "${USER_UID}" \
+			--gid "${USER_GID}" \
+			--gecos "${USER_NAME},,," \
+			--disabled-password \
+			"${USER_NAME}" \
+  ; fi
 
 ARG USER_HOME=/home/${USER_NAME}
 ENV O3DE_DIR=${USER_HOME}/o3de
@@ -76,15 +84,14 @@ FROM scripts_focal AS cli_dev
 ENTRYPOINT [ "python3", "-u", "-m", "o3tanks.cli" ]
 
 RUN pip3 install --no-cache-dir \
-		docker \
-		six
+		docker==5.0.0 \
+		six==1.16.0
 
 
 FROM cli_dev AS cli
 
-ARG USER_NAME=user
-ARG USER_GROUP=${USER_NAME}
-
+ARG USER_NAME
+ARG USER_GROUP
 ARG O3TANKS_SCRIPTS_DIR="o3tanks"
 COPY --chown=${USER_NAME}:${USER_GROUP} "${O3TANKS_SCRIPTS_DIR}/globals" "${O3TANKS_DIR}/globals"
 COPY --chown=${USER_NAME}:${USER_GROUP} "${O3TANKS_SCRIPTS_DIR}/utils" "${O3TANKS_DIR}/utils"
@@ -116,15 +123,16 @@ FROM scripts_focal AS updater_dev
 ENTRYPOINT [ "python3", "-u", "-m", "o3tanks.updater" ]
 
 RUN pip3 install --no-cache-dir \
-		pygit2
+		pygit2==1.6.1
 
-USER user
+ARG USER_NAME
+USER ${USER_NAME}
 
 
 FROM updater_dev AS updater
 
-ARG USER_NAME=user
-ARG USER_GROUP=${USER_NAME}
+ARG USER_NAME
+ARG USER_GROUP
 ARG O3TANKS_SCRIPTS_DIR="o3tanks"
 COPY --chown=${USER_NAME}:${USER_GROUP} "${O3TANKS_SCRIPTS_DIR}/globals" "${O3TANKS_DIR}/globals"
 COPY --chown=${USER_NAME}:${USER_GROUP} "${O3TANKS_SCRIPTS_DIR}/utils" "${O3TANKS_DIR}/utils"
@@ -151,19 +159,27 @@ ENV LANG en_US.UTF-8
 ENV LANGUAGE en_US:en
 ENV LC_ALL en_US.UTF-8
 
-ARG USER_NAME=user
-ARG USER_UID=1000
-ARG USER_GROUP=${USER_NAME}
-ARG USER_GID=${USER_UID}
-RUN addgroup \
-		--gid "${USER_GID}" \
-		"${USER_GROUP}" \
- && adduser \
- 		--uid "${USER_UID}" \
-		--gid "${USER_GID}" \
-		--gecos "${USER_NAME},,," \
-		--disabled-password \
-		"${USER_NAME}"
+ARG USER_NAME
+ARG USER_GROUP
+ARG USER_UID
+ARG USER_GID
+RUN if [ -z "${USER_NAME}" ] || [ -z "${USER_GROUP}" ] || [ -z "${USER_UID}" ] || [ -z "${USER_GID}" ]; then \
+		echo 'ERROR: At least one user property is missing. Please check your --build-arg values' \
+	 && exit 1 \
+  ; fi \
+ && if [ ${USER_GID} -gt 0 ]; then \
+ 		addgroup \
+			--gid "${USER_GID}" \
+			"${USER_GROUP}" \
+  ; fi \
+ && if [ ${USER_UID} -gt 0 ]; then \
+		adduser \
+ 			--uid "${USER_UID}" \
+			--gid "${USER_GID}" \
+			--gecos "${USER_NAME},,," \
+			--disabled-password \
+			"${USER_NAME}" \
+  ; fi
 
 ARG USER_HOME=/home/${USER_NAME}
 ENV O3DE_DIR=${USER_HOME}/o3de
@@ -201,13 +217,14 @@ FROM runtime_dependencies AS runner_dev
 
 ENTRYPOINT [ "python3", "-u", "-m", "o3tanks.runner" ]
 
-USER user
+ARG USER_NAME
+USER ${USER_NAME}
 
 
 FROM runner_dev AS runner
 
-ARG USER_NAME=user
-ARG USER_GROUP=${USER_NAME}
+ARG USER_NAME
+ARG USER_GROUP
 ARG O3TANKS_SCRIPTS_DIR="o3tanks"
 COPY --chown=${USER_NAME}:${USER_GROUP} "${O3TANKS_SCRIPTS_DIR}/globals" "${O3TANKS_DIR}/globals"
 COPY --chown=${USER_NAME}:${USER_GROUP} "${O3TANKS_SCRIPTS_DIR}/utils" "${O3TANKS_DIR}/utils"
@@ -271,13 +288,14 @@ FROM development_dependencies AS builder_dev
 
 ENTRYPOINT [ "python3", "-u", "-m", "o3tanks.builder" ]
 
-USER user
+ARG USER_NAME
+USER ${USER_NAME}
 
 
 FROM builder_dev AS builder
 
-ARG USER_NAME=user
-ARG USER_GROUP=${USER_NAME}
+ARG USER_NAME
+ARG USER_GROUP
 ARG O3TANKS_SCRIPTS_DIR="o3tanks"
 RUN mkdir --parents "${O3DE_ENGINE_DIR}/build" \
  && mkdir --parents "${O3DE_ENGINE_DIR}/install"

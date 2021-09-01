@@ -86,6 +86,7 @@ class Messages(AutoEnum):
 	INVALID_SETTING_NAME = enum.auto()
 	INVALID_SETTING_SECTION = enum.auto()
 	INVALID_TARGET = enum.auto()
+	INVALID_USER_NAMESPACE = enum.auto()
 	INVALID_VERSION = enum.auto()
 	INSERT_VERSION_NAME = enum.auto()
 	INSTALL_QUESTION = enum.auto()
@@ -300,6 +301,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Unsupported section name: {}"
 	elif message_id == Messages.INVALID_TARGET:
 		message_text = "Unsupported target: {})"
+	elif message_id == Messages.INVALID_USER_NAMESPACE:
+		message_text = "Unable to calculate the user namespace for the container user"
 	elif message_id == Messages.INVALID_VERSION:
 		message_text = "Invalid version name: {}. Only following characters are allowed: alphanumerics, dots, hyphens and underscores"
 	elif message_id == Messages.IS_DEVELOPMENT_MODE:
@@ -371,7 +374,7 @@ def get_message_text(message_id, *args, **kwargs):
 	elif message_id == Messages.UPGRADE_COMPLETED:
 		message_text = "Upgrade completed. All related configurations was regenerated"
 	elif message_id == Messages.UPGRADE_COMPLETED_SKIP_REBUILD:
-		message_text = "Skipping rebuild since option '" + print_option(LongOptions.REBUILD) + " is set"
+		message_text = "Skipping rebuild since option '" + print_option(LongOptions.SKIP_REBUILD) + " is set"
 	elif message_id == Messages.UPGRADE_COMPLETED_SOURCE_ONLY:
 		message_text = "Source code was upgraded correctly. There isn't any installation to rebuild"
 	elif message_id == Messages.VERSION_ALREADY_EXISTS:

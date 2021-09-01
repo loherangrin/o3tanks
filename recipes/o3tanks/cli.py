@@ -316,7 +316,8 @@ def check_ownership(paths, instructions, resume_command, mapping = None):
 					except ValueError:
 						continue						
 
-			print_msg(Level.INFO, "sudo chown --recursive {}:{} {}".format(container_user.uid, container_user.gid, real_path))
+			real_container_user = get_container_user(False)
+			print_msg(Level.INFO, "sudo chown --recursive {}:{} {}".format(real_container_user.uid, real_container_user.gid, real_path))
 		
 		print_msg(Level.INFO, '')
 		print_msg(Level.INFO, Messages.RUN_RESUME_COMMAND)
@@ -997,7 +998,7 @@ def manage_project_settings(project_dir, setting_key_section , setting_key_name,
 	run_builder(None, None, project_dir, BuilderCommands.SETTINGS, Targets.PROJECT, setting_key_section, setting_key_name, setting_value, clear, False)
 
 
-def open_project(project_dir, new_engine_version = None):	
+def open_project(project_dir, engine_config = None, new_engine_version = None):
 	if new_engine_version is not None:
 		engine_version = new_engine_version
 	else:
@@ -1025,9 +1026,10 @@ def open_project(project_dir, new_engine_version = None):
 		else:
 			throw_error(Messages.MISSING_BOUND_VERSION, engine_version)
 
-	engine_config = select_recommended_config(engine_version)
 	if engine_config is None:
-		throw_error(Messages.VERSION_NOT_FOUND, engine_version)	
+		engine_config = select_recommended_config(engine_version)
+		if engine_config is None:
+			throw_error(Messages.VERSION_NOT_FOUND, engine_version)
 
 	if new_engine_version is not None:
 		run_builder(engine_version, None, project_dir, BuilderCommands.SETTINGS, Targets.PROJECT, Settings.ENGINE.value, None, new_engine_version, False, True)
@@ -1274,10 +1276,17 @@ def handle_init_command(engine_version, project_path, alias):
 		close_container_client()
 
 
-def handle_open_command(project_path, engine_version):
-	if engine_version is not None:
-		if not is_engine_version(engine_version):
-			throw_error(Messages.INVALID_VERSION, engine_version)
+def handle_open_command(project_path, engine_config_name, new_engine_version):
+	if engine_config_name is not None:
+		engine_config = O3DE_Configs.from_value(engine_config_name)
+		if engine_config is None:
+			throw_error(Messages.INVALID_CONFIG, engine_config_name)
+	else:
+		engine_config = None
+
+	if new_engine_version is not None:
+		if not is_engine_version(new_engine_version):
+			throw_error(Messages.INVALID_VERSION, new_engine_version)
 
 	project_dir = parse_project_path(project_path)
 	if not project_dir.is_dir():
@@ -1288,10 +1297,10 @@ def handle_open_command(project_path, engine_version):
 	try:
 		check_container_client()
 		check_runner()
-		if engine_version is not None:
+		if new_engine_version is not None:
 			check_builder()
 	
-		open_project(project_dir, engine_version)
+		open_project(project_dir, engine_config, new_engine_version)
 
 	finally:
 		close_container_client()
@@ -1357,34 +1366,86 @@ def main():
 	if DEVELOPMENT_MODE:
 		print_msg(Level.WARNING, Messages.IS_DEVELOPMENT_MODE)
 
+	DESCRIPTIONS_COMMON_BINARY = "Project runtime: {}, {}".format(O3DE_ProjectBinaries.CLIENT.value, O3DE_ProjectBinaries.SERVER.value)
+	DESCRIPTIONS_COMMON_CONFIG = "Build configuration: {}, {}, {}".format(O3DE_Configs.DEBUG.value, O3DE_Configs.PROFILE.value, O3DE_Configs.RELEASE.value)
+	DESCRIPTIONS_COMMON_ENGINE = "Engine version"
+	DESCRIPTIONS_COMMON_ENGINE_SELF = "{}, or 'self' for O3Tanks".format(DESCRIPTIONS_COMMON_ENGINE)
+	DESCRIPTIONS_COMMON_PROJECT = "Path to the project root, instead of the current directory"
+
+	DESCRIPTIONS_GLOBAL_QUIET = "Suppress all output messages (silent mode)"
+	DESCRIPTIONS_GLOBAL_VERBOSE = "Show additional messages (verbose mode)"
+
 	DESCRIPTIONS_INSTALL = "Download, build and install a new engine version"
-	DESCRIPTIONS_LIST = "List all installed versions"
-	DESCRIPTIONS_REFRESH = "Check if new updates are available"
+	DESCRIPTIONS_INSTALL_ENGINE = "Name for the new installation"
+	DESCRIPTIONS_INSTALL_CONFIG = DESCRIPTIONS_COMMON_CONFIG
+	DESCRIPTIONS_INSTALL_FORCE = "Re-install even if already installed / corrupted"
+	DESCRIPTIONS_INSTALL_REMOVE_BUILD = "Remove built files after the building stage"
+	DESCRIPTIONS_INSTALL_REMOVE_INSTALL = "Remove installed files after the install stage, or stop at the building stage (if {} is not set)".format(print_option(LongOptions.SAVE_IMAGES))
+	DESCRIPTIONS_INSTALL_SAVE_IMAGES = "Generate images containing the engine installation"
+	DESCRIPTIONS_INSTALL_FORK = "Download from a fork on GitHub"
+	DESCRIPTIONS_INSTALL_REPOSITORY = "Download from a remote Git repository"
+	DESCRIPTIONS_INSTALL_BRANCH = "Download a specific branch"
+	DESCRIPTIONS_INSTALL_COMMIT = "Download a specific commit"
+	DESCRIPTIONS_INSTALL_TAG = "Download a specific tag"
+
+	DESCRIPTIONS_LIST = "List all installed engine versions"
+
+	DESCRIPTIONS_REFRESH = "Check if new updates are available for a specific engine version"
+	DESCRIPTIONS_REFRESH_ENGINE = DESCRIPTIONS_COMMON_ENGINE_SELF
+
 	DESCRIPTIONS_UNINSTALL = "Uninstall an engine version"
-	DESCRIPTIONS_UPGRADE = "Apply new updates to the local installation"
+	DESCRIPTIONS_UNINSTALL_ENGINE = DESCRIPTIONS_COMMON_ENGINE
+	DESCRIPTIONS_UNINSTALL_CONFIG = "Uninstall only a specific {}".format(DESCRIPTIONS_COMMON_CONFIG.lower())
+	DESCRIPTIONS_UNINSTALL_FORCE = "Remove files even if the installation is corrupted"
+
+	DESCRIPTIONS_UPGRADE = "Apply new updates to the local engine installation"
+	DESCRIPTIONS_UPGRADE_ENGINE = DESCRIPTIONS_COMMON_ENGINE_SELF
+	DESCRIPTIONS_UPGRADE_SKIP_REBUILD = "Skip re-building all configurations after a successful upgrade"
+
+	DESCRIPTIONS_BUILD = "Build a project runtime from its source code"
+	DESCRIPTIONS_BUILD_BINARY = DESCRIPTIONS_COMMON_BINARY
+	DESCRIPTIONS_BUILD_CONFIG = DESCRIPTIONS_COMMON_CONFIG
+	DESCRIPTIONS_BUILD_PROJECT = DESCRIPTIONS_COMMON_PROJECT
+	
+	DESCRIPTIONS_CLEAN = "Remove all built project files (binaries and intermediates)"
+	DESCRIPTIONS_CLEAN_CONFIG = DESCRIPTIONS_COMMON_CONFIG
+	DESCRIPTIONS_CLEAN_FORCE = "Remove files even if the project is corrupted"
+	DESCRIPTIONS_CLEAN_PROJECT = DESCRIPTIONS_COMMON_PROJECT
 
 	DESCRIPTIONS_INIT = "Create a new empty project"
-	DESCRIPTIONS_BUILD = "Build a binary from the source code"
-	DESCRIPTIONS_CLEAN = "Remove all built files (binaries and intermediates)"
+	DESCRIPTIONS_INIT_ALIAS = "Assign a project name, instead of the directory name"
+	DESCRIPTIONS_INIT_ENGINE = DESCRIPTIONS_COMMON_ENGINE
+	DESCRIPTIONS_INIT_PROJECT = DESCRIPTIONS_COMMON_PROJECT
+
 	DESCRIPTIONS_OPEN = "Open the editor to view / modify the project"
-	DESCRIPTIONS_RUN = "Run a built binary"
-	DESCRIPTIONS_SETTINGS = "View / modify the bound engine version and other settings"
+	DESCRIPTIONS_OPEN_CONFIG = DESCRIPTIONS_COMMON_CONFIG
+	DESCRIPTIONS_OPEN_ENGINE = "Override the linked engine version"
+	DESCRIPTIONS_OPEN_PROJECT = DESCRIPTIONS_COMMON_PROJECT
 
-	DESCRIPTIONS_HELP = "Show this help message"
-	DESCRIPTIONS_VERSION = "Show information about this tool"
+	DESCRIPTIONS_RUN = "Run a built project runtime"
+	DESCRIPTIONS_RUN_BINARY = DESCRIPTIONS_COMMON_BINARY
+	DESCRIPTIONS_RUN_CONFIG = DESCRIPTIONS_COMMON_CONFIG
+	DESCRIPTIONS_RUN_PROJECT = DESCRIPTIONS_COMMON_PROJECT
 
-	DESCRIPTIONS_CONFIG = "Use a configuration: {}, {}, {}".format(O3DE_Configs.DEBUG.value, O3DE_Configs.PROFILE.value, O3DE_Configs.RELEASE.value)
-	DESCRIPTIONS_PROJECT = "Path to the project directory"
-	DESCRIPTIONS_TARGET = "Target binary: {}, {}".format(O3DE_ProjectBinaries.CLIENT.value, O3DE_ProjectBinaries.SERVER.value)
-	
+	DESCRIPTIONS_SETTINGS = "View / modify the project settings (e.g. the linked engine version)"
+	DESCRIPTIONS_SETTINGS_KEY = "Setting identifier, or <empty> for all settings"
+	DESCRIPTIONS_SETTINGS_VALUE = "New value to be stored, or <empty> to show the current one"
+	DESCRIPTIONS_SETTINGS_CLEAR = "Delete the stored value"
+	DESCRIPTIONS_SETTINGS_PROJECT = DESCRIPTIONS_COMMON_PROJECT
+
+	DESCRIPTIONS_HELP = "Show available commands and their usage"
+	DESCRIPTIONS_HELP_COMMAND = "Command name"
+
+	DESCRIPTIONS_VERSION = "Show version and legal information"
+
 	set_bin_file(sys.argv[1])
 	set_real_bin_file(sys.argv[2])
 	set_real_volumes_dir(sys.argv[3])
 	start_args_index = 4
 
 	global_parser = argparse.ArgumentParser(add_help = False)
-	global_parser.add_argument(print_option(ShortOptions.QUIET), print_option(LongOptions.QUIET), action = "store_true", help = "")
-	global_parser.add_argument(print_option(ShortOptions.VERBOSE), print_option(LongOptions.VERBOSE), action = "count", default = 0, help = "")
+	global_parser.add_argument(print_option(ShortOptions.QUIET), print_option(LongOptions.QUIET), action = "store_true", help = DESCRIPTIONS_GLOBAL_QUIET)
+	global_parser.add_argument(print_option(ShortOptions.VERBOSE), print_option(LongOptions.VERBOSE), action = "count", default = 0, help = DESCRIPTIONS_GLOBAL_VERBOSE)
 
 	main_parser = argparse.ArgumentParser(
 		prog = get_bin_name(),
@@ -1393,7 +1454,7 @@ def main():
 		description = textwrap.dedent('''\
 			( = required, [...] = optional, {...} = choice, <...> = your input)
 
-			A version manager for 'O3DE (Open 3D Engine)' to manage multiple installations using containers.
+			A version manager for 'O3DE (Open 3D Engine)' to handle multiple engine installations using containers.
 			'''),
 		epilog = textwrap.dedent('''\
 			For any further information, please visit the project documentation at:
@@ -1401,85 +1462,86 @@ def main():
 			''')
 	)
 	main_parser.set_defaults(handler = handle_empty_command)
-	main_parser.add_argument(print_option(LongOptions.VERSION), action = "store_true", help = "")
+	main_parser.add_argument(print_option(LongOptions.VERSION), action = "store_true", help = DESCRIPTIONS_VERSION)
 	subparsers = main_parser.add_subparsers()
 
 	install_parser = subparsers.add_parser(CliCommands.INSTALL.value, parents = [ global_parser ], help = DESCRIPTIONS_INSTALL)
 	install_parser.set_defaults(handler = handle_install_command)
-	install_parser.add_argument("engine_version", metavar="version", help = "")
-	install_parser.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "engine_config_name", default = O3DE_DEFAULT_CONFIG.value, metavar = "<config>", help = "")
-	install_parser.add_argument(print_option(ShortOptions.FORCE), print_option(LongOptions.FORCE), action = "store_true", help = "")
-	install_parser.add_argument(print_option(LongOptions.REMOVE_BUILD), action = "store_true", help = "")
-	install_parser.add_argument(print_option(LongOptions.REMOVE_INSTALL), action = "store_true", help = "")
-	install_parser.add_argument(print_option(LongOptions.SAVE_IMAGES), action = "store_true", help = "")
+	install_parser.add_argument("engine_version", metavar="version", help = DESCRIPTIONS_INSTALL_ENGINE)
+	install_parser.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "engine_config_name", default = O3DE_DEFAULT_CONFIG.value, metavar = "<config>", help = DESCRIPTIONS_INSTALL_CONFIG)
+	install_parser.add_argument(print_option(ShortOptions.FORCE), print_option(LongOptions.FORCE), action = "store_true", help = DESCRIPTIONS_INSTALL_FORCE)
+	install_parser.add_argument(print_option(LongOptions.REMOVE_BUILD), action = "store_true", help = DESCRIPTIONS_INSTALL_REMOVE_BUILD)
+	install_parser.add_argument(print_option(LongOptions.REMOVE_INSTALL), action = "store_true", help = DESCRIPTIONS_INSTALL_REMOVE_INSTALL)
+	install_parser.add_argument(print_option(LongOptions.SAVE_IMAGES), action = "store_true", help = DESCRIPTIONS_INSTALL_SAVE_IMAGES)
 
 	install_url_group = install_parser.add_mutually_exclusive_group()
-	install_url_group.add_argument(print_option(LongOptions.FORK), metavar = "<username>/<project>", help = "")
-	install_url_group.add_argument(print_option(LongOptions.REPOSITORY), metavar = "<url>", help = "")
+	install_url_group.add_argument(print_option(LongOptions.FORK), metavar = "<username>/<project>", help = DESCRIPTIONS_INSTALL_FORK)
+	install_url_group.add_argument(print_option(LongOptions.REPOSITORY), metavar = "<url>", help = DESCRIPTIONS_INSTALL_REPOSITORY)
 
 	install_revision_group = install_parser.add_mutually_exclusive_group()
-	install_revision_group.add_argument(print_option(LongOptions.BRANCH), metavar = "<string>", help = "")
-	install_revision_group.add_argument(print_option(LongOptions.COMMIT), metavar = "<hash>", help = "")
-	install_revision_group.add_argument(print_option(LongOptions.TAG), metavar = "<string>", help = "")
+	install_revision_group.add_argument(print_option(LongOptions.BRANCH), metavar = "<string>", help = DESCRIPTIONS_INSTALL_BRANCH)
+	install_revision_group.add_argument(print_option(LongOptions.COMMIT), metavar = "<hash>", help = DESCRIPTIONS_INSTALL_COMMIT)
+	install_revision_group.add_argument(print_option(LongOptions.TAG), metavar = "<string>", help = DESCRIPTIONS_INSTALL_TAG)
 
 	list_parser = subparsers.add_parser(CliCommands.LIST.value, parents = [ global_parser ], help = DESCRIPTIONS_LIST)
 	list_parser.set_defaults(handler = handle_list_command)
 
 	refresh_parser = subparsers.add_parser(CliCommands.REFRESH.value, parents = [ global_parser ], help = DESCRIPTIONS_REFRESH)
 	refresh_parser.set_defaults(handler = handle_refresh_command)
-	refresh_parser.add_argument("engine_version", metavar="version", help = "")
+	refresh_parser.add_argument("engine_version", metavar="version", help = DESCRIPTIONS_REFRESH_ENGINE)
 
 	uninstall_parser = subparsers.add_parser(CliCommands.UNINSTALL.value, parents = [ global_parser ], help = DESCRIPTIONS_UNINSTALL)
 	uninstall_parser.set_defaults(handler = handle_uninstall_command)
-	uninstall_parser.add_argument("engine_version", metavar="version", help = "")
-	uninstall_parser.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "engine_config_name", default = None, metavar = "<config>", help = "")
-	uninstall_parser.add_argument(print_option(ShortOptions.FORCE), print_option(LongOptions.FORCE), action = "store_true", help = "")
+	uninstall_parser.add_argument("engine_version", metavar="version", help = DESCRIPTIONS_UNINSTALL_ENGINE)
+	uninstall_parser.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "engine_config_name", default = None, metavar = "<config>", help = DESCRIPTIONS_UNINSTALL_CONFIG)
+	uninstall_parser.add_argument(print_option(ShortOptions.FORCE), print_option(LongOptions.FORCE), action = "store_true", help = DESCRIPTIONS_UNINSTALL_FORCE)
 
 	upgrade_parser = subparsers.add_parser(CliCommands.UPGRADE.value, parents = [ global_parser ], help = DESCRIPTIONS_UPGRADE)
 	upgrade_parser.set_defaults(handler = handle_upgrade_command)
-	upgrade_parser.add_argument("engine_version", metavar="version", help = "")
-	upgrade_parser.add_argument(print_option(LongOptions.REBUILD), action = "store_true", help = "")
+	upgrade_parser.add_argument("engine_version", metavar="version", help = DESCRIPTIONS_UPGRADE_ENGINE)
+	upgrade_parser.add_argument(print_option(LongOptions.SKIP_REBUILD), dest = "rebuild", action = "store_false", help = DESCRIPTIONS_UPGRADE_SKIP_REBUILD)
 
 	build_parser = subparsers.add_parser(CliCommands.BUILD.value, parents = [ global_parser ], help = DESCRIPTIONS_BUILD)
 	build_parser.set_defaults(handler = handle_build_command)
-	build_parser.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "config_name", default = O3DE_DEFAULT_CONFIG.value, metavar = "<config>", help = "")
-	build_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PROJECT), dest = "project_path", metavar = "<path>", help = "")
-	build_parser.add_argument("binary_name", metavar = "binary", help = "")
+	build_parser.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "config_name", default = O3DE_DEFAULT_CONFIG.value, metavar = "<config>", help = DESCRIPTIONS_BUILD_CONFIG)
+	build_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PROJECT), dest = "project_path", metavar = "<path>", help = DESCRIPTIONS_BUILD_PROJECT)
+	build_parser.add_argument("binary_name", metavar = "binary", help = DESCRIPTIONS_BUILD_BINARY)
 
 	clean_parser = subparsers.add_parser(CliCommands.CLEAN.value, parents = [ global_parser ], help = DESCRIPTIONS_CLEAN)
 	clean_parser.set_defaults(handler = handle_clean_command)
-	clean_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PROJECT), dest = "project_path", metavar = "<path>", help = "")
+	clean_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PROJECT), dest = "project_path", metavar = "<path>", help = DESCRIPTIONS_CLEAN_PROJECT)
 	
 	clean_group = clean_parser.add_mutually_exclusive_group()
-	clean_group.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "config_name", default = O3DE_DEFAULT_CONFIG.value, metavar = "<config>", help = "")
-	clean_group.add_argument(print_option(ShortOptions.FORCE), print_option(LongOptions.FORCE), action = "store_true", help = "")
+	clean_group.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "config_name", default = O3DE_DEFAULT_CONFIG.value, metavar = "<config>", help = DESCRIPTIONS_CLEAN_CONFIG)
+	clean_group.add_argument(print_option(ShortOptions.FORCE), print_option(LongOptions.FORCE), action = "store_true", help = DESCRIPTIONS_CLEAN_FORCE)
 
 	init_parser = subparsers.add_parser(CliCommands.INIT.value, parents = [ global_parser ], help = DESCRIPTIONS_INIT)
 	init_parser.set_defaults(handler = handle_init_command)
-	init_parser.add_argument(print_option(ShortOptions.ENGINE), print_option(LongOptions.ENGINE), dest = "engine_version", default = O3DE_DEFAULT_VERSION, metavar = "<version>", help = "")
-	init_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PROJECT), dest = "project_path", metavar = "<path>", help = "")
-	init_parser.add_argument(print_option(LongOptions.ALIAS), dest = "alias", metavar = "<name>", help = "")
+	init_parser.add_argument(print_option(ShortOptions.ENGINE), print_option(LongOptions.ENGINE), dest = "engine_version", default = O3DE_DEFAULT_VERSION, metavar = "<version>", help = DESCRIPTIONS_INIT_ENGINE)
+	init_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PROJECT), dest = "project_path", metavar = "<path>", help = DESCRIPTIONS_INIT_PROJECT)
+	init_parser.add_argument(print_option(LongOptions.ALIAS), dest = "alias", metavar = "<name>", help = DESCRIPTIONS_INIT_ALIAS)
 
 	open_parser = subparsers.add_parser(CliCommands.OPEN.value, parents = [ global_parser ], help = DESCRIPTIONS_OPEN)
 	open_parser.set_defaults(handler = handle_open_command)
-	open_parser.add_argument(print_option(ShortOptions.ENGINE), print_option(LongOptions.ENGINE), dest = "engine_version", default = None, metavar = "<version>", help = "")
-	open_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PROJECT), dest = "project_path", metavar = "<path>", help = "")
+	open_parser.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "engine_config_name", default = None, metavar = "<config>", help = DESCRIPTIONS_OPEN_CONFIG)
+	open_parser.add_argument(print_option(ShortOptions.ENGINE), print_option(LongOptions.ENGINE), dest = "new_engine_version", default = None, metavar = "<version>", help = DESCRIPTIONS_OPEN_ENGINE)
+	open_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PROJECT), dest = "project_path", metavar = "<path>", help = DESCRIPTIONS_OPEN_PROJECT)
 
 	run_parser = subparsers.add_parser(CliCommands.RUN.value, parents = [ global_parser ], help = DESCRIPTIONS_RUN)
 	run_parser.set_defaults(handler = handle_run_command)
-	run_parser.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "config_name", default = O3DE_DEFAULT_CONFIG.value, metavar = "<config>", help = "")
-	run_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PROJECT), dest = "project_path", metavar = "<path>", help = "")
-	run_parser.add_argument("binary_name", metavar = "binary", help = "")
+	run_parser.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "config_name", default = O3DE_DEFAULT_CONFIG.value, metavar = "<config>", help = DESCRIPTIONS_RUN_CONFIG)
+	run_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PROJECT), dest = "project_path", metavar = "<path>", help = DESCRIPTIONS_RUN_PROJECT)
+	run_parser.add_argument("binary_name", metavar = "binary", help = DESCRIPTIONS_RUN_BINARY)
 
 	settings_parser = subparsers.add_parser(CliCommands.SETTINGS.value, parents = [ global_parser ], help = DESCRIPTIONS_SETTINGS)
 	settings_parser.set_defaults(handler = handle_settings_command)
-	settings_parser.add_argument("setting_key", nargs = "?", default = None, metavar = "<section>.<key>", help = "")
-	settings_parser.add_argument("setting_value", nargs = "?", default = None, metavar = "<value>", help = "")
-	settings_parser.add_argument(print_option(LongOptions.CLEAR), action = "store_true", help = "")
-	settings_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PROJECT), dest = "project_path", metavar = "<path>", help = "")
+	settings_parser.add_argument("setting_key", nargs = "?", default = None, metavar = "<section>.<key>", help = DESCRIPTIONS_SETTINGS_KEY)
+	settings_parser.add_argument("setting_value", nargs = "?", default = None, metavar = "<value>", help = DESCRIPTIONS_SETTINGS_VALUE)
+	settings_parser.add_argument(print_option(LongOptions.CLEAR), action = "store_true", help = DESCRIPTIONS_SETTINGS_CLEAR)
+	settings_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PROJECT), dest = "project_path", metavar = "<path>", help = DESCRIPTIONS_SETTINGS_PROJECT)
 
 	help_parser = subparsers.add_parser(CliCommands.HELP.value, help = DESCRIPTIONS_HELP)
-	help_parser.add_argument("help_command", nargs = "?", default = None, metavar = "<command>", help = "")
+	help_parser.add_argument("help_command", nargs = "?", default = None, metavar = "<command>", help = DESCRIPTIONS_HELP_COMMAND)
 	help_parser.set_defaults(handler = handle_help_command)
 
 	version_parser = subparsers.add_parser(CliCommands.VERSION.value, aliases = [ CliCommands.INFO.value ], help = DESCRIPTIONS_VERSION)

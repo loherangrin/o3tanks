@@ -77,7 +77,7 @@ def build_engine(engine_config, binaries):
 			to_path = O3DE_ENGINE_INSTALL_DIR / path
 			
 			copy_all(from_path, to_path)
-		
+
 	return result.returncode
 
 
@@ -331,9 +331,11 @@ def main():
 		
 		if target == Targets.ENGINE:
 			binaries = deserialize_args(4) if len(sys.argv) > 4 else None
-			
-			build_engine(config, binaries)
-	
+
+			exit_code = build_engine(config, binaries)
+			if exit_code != 0:
+				exit(exit_code)
+
 		elif target == Targets.PROJECT:
 			binary = deserialize_arg(4, O3DE_ProjectBinaries)
 

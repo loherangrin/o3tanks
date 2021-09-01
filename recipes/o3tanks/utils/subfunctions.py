@@ -35,15 +35,15 @@ def get_engine_repository_from_source(source_dir):
 	if repository_url is None:
 		return RepositoryResult(RepositoryResultType.NOT_FOUND)
 	with open(source_dir / ".git" / "HEAD", 'r') as file:
-		repository_reference = file.readline()
+		repository_reference = file.readline().strip('\n\t ')
 	
 	matches = re.match(r"^ref:\s+refs/heads/(.+)$", repository_reference)
 	if matches:
-		repository_branch = matches.group(1)
+		repository_branch = matches.group(1).strip('\n\t ')
 		repository_revision = None
 	elif is_commit(repository_reference):
 		repository_branch = None
-		repository_revision = repository_reference
+		repository_revision = repository_reference.strip('\n\t ')
 	else:		
 		return RepositoryResult(ResultType.INVALID)
 
