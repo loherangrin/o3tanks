@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from ..globals.o3tanks import DEVELOPMENT_MODE, REAL_USER, USER_NAME, USER_GROUP, VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH
+from ..globals.o3tanks import DEVELOPMENT_MODE, REAL_USER, USER_NAME, USER_GROUP, get_version_number
 from .filesystem import is_directory_empty
 from .input_output import Level, Messages, get_verbose, print_msg, throw_error
 from .serialization import serialize_list
@@ -366,7 +366,7 @@ def get_image_name(image_id, engine_version = None, engine_config = None):
 	if DEVELOPMENT_MODE:
 		image += ":development"
 	else:
-		image += ":{}.{}.{}".format(VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH)
+		image += ":{}".format(get_version_number())
 
 	return image
 

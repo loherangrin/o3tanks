@@ -327,7 +327,7 @@ def check_ownership(paths, instructions, resume_command, mapping = None):
 
 
 def print_version_info():
-	print("O3Tanks version {}.{}.{}".format(VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH))
+	print("O3Tanks version {}".format(get_version_number()))
 	print("A containerized version manager for 'O3DE (Open 3D Engine)'")
 	print('https://github.com/loherangrin/o3tanks/')
 	print('')

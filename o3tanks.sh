@@ -199,6 +199,10 @@ get_image_name()
 		image_version="development"
 	else
 		image_version="${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}"
+
+		if [ -n "${VERSION_PRE_RELEASE}" ]; then
+			image_version="${image_version}-${VERSION_PRE_RELEASE}"
+		fi
 	fi
 
 	echo "${IMAGE_PREFIX}-${image_id}${engine_version}${engine_config}:${image_version}"
@@ -311,6 +315,17 @@ check_python()
 
 init_globals()
 {
+	readonly VERSION_MAJOR='0'
+	readonly VERSION_MINOR='2'
+	readonly VERSION_PATCH='0'
+	readonly VERSION_PRE_RELEASE='wip'
+
+	if [ "${VERSION_PRE_RELEASE}" = 'wip' ]; then
+		if [ -z "${O3TANKS_DEV_MODE:-}" ]; then
+			O3TANKS_DEV_MODE='true'
+		fi
+	fi
+
 	readonly DEBUG=1
 	readonly INFO=2
 	readonly WARNING=3
@@ -415,10 +430,6 @@ init_globals()
 
 	readonly RECIPES_DIR="/home/${USER_NAME}/o3tanks_recipes"
 	readonly SCRIPTS_DIR="/home/${USER_NAME}/o3tanks"
-
-	readonly VERSION_MAJOR='0'
-	readonly VERSION_MINOR='1'
-	readonly VERSION_PATCH='0'
 }
 
 run_cli()

@@ -158,8 +158,9 @@ RECIPES_PATH = pathlib.PurePath("recipes")
 SCRIPTS_PATH = RECIPES_PATH / "o3tanks"
 
 VERSION_MAJOR = 0
-VERSION_MINOR = 1
+VERSION_MINOR = 2
 VERSION_PATCH = 0
+VERSION_PRE_RELEASE = "wip"
 
 
 # --- VARIABLES ---
@@ -199,3 +200,12 @@ def set_real_bin_file(value):
 def set_real_project_dir(value):
 	global REAL_PROJECT_DIR
 	REAL_PROJECT_DIR = pathlib.PurePath(value)
+
+
+def get_version_number():
+	version = "{}.{}.{}".format(VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH)
+
+	if VERSION_PRE_RELEASE is not None:
+		version += "-{}".format(VERSION_PRE_RELEASE)
+
+	return version
