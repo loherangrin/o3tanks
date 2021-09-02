@@ -22,7 +22,28 @@ RUN export DEBIAN_FRONTEND=noninteractive \
  && rm -rf /var/lib/apt/lists/* \
  && sed --in-place --regexp-extended 's/^#[[:space:]]*(en_US.UTF-8 UTF-8)$/\1/g' /etc/locale.gen \
  && locale-gen
- 
+
+RUN FOCAL_SOURCES_FILE="/etc/apt/sources.list" \
+ && BIONIC_SOURCES_FILE="/etc/apt/sources.list.d/bionic.list" \
+ && cp "${FOCAL_SOURCES_FILE}" "${BIONIC_SOURCES_FILE}" \
+ && sed --in-place 's/focal/bionic/g' "${BIONIC_SOURCES_FILE}" \
+ && BIONIC_PINNING_FILE="/etc/apt/preferences.d/bionic" \
+ && echo \
+ 		'Package: libffi6' '\n' \
+		'Pin: release n=bionic' '\n' \
+		'Pin-Priority: 990' '\n' \
+		'' \
+		'Package: *' '\n' \
+		'Pin: release n=bionic' '\n' \
+		'Pin-Priority: -1' '\n' \
+	> "${BIONIC_PINNING_FILE}" \
+ && export DEBIAN_FRONTEND=noninteractive \
+ && apt-get update && apt-get install -y --no-install-recommends \
+		libffi6 \
+ && rm -rf /var/lib/apt/lists/* \
+ && rm "${BIONIC_PINNING_FILE}" \
+ && rm "${BIONIC_SOURCES_FILE}"
+
 ENV LANG en_US.UTF-8
 ENV LANGUAGE en_US:en
 ENV LC_ALL en_US.UTF-8
@@ -69,7 +90,7 @@ WORKDIR ${USER_HOME}
 
 # ---
 
-FROM base_focal AS scripts_focal
+FROM base_focal AS scripts
 
 RUN export DEBIAN_FRONTEND=noninteractive \
  && apt-get update && apt-get install -y --no-install-recommends \
@@ -79,7 +100,7 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 
 # ---
 
-FROM scripts_focal AS cli_dev
+FROM scripts AS cli_dev
 
 ENTRYPOINT [ "python3", "-u", "-m", "o3tanks.cli" ]
 
@@ -118,7 +139,7 @@ RUN cd "${O3TANKS_DIR}/.." \
 
 # ---
 
-FROM scripts_focal AS updater_dev
+FROM scripts AS updater_dev
 
 ENTRYPOINT [ "python3", "-u", "-m", "o3tanks.updater" ]
 
@@ -145,75 +166,56 @@ RUN python3 -m compileall -f -d "${O3TANKS_DIR}" "${O3TANKS_SCRIPTS_DIR}"
 
 # ---
 
-FROM ubuntu:18.04 AS base_bionic
-
-RUN export DEBIAN_FRONTEND=noninteractive \
- && apt-get update && apt-get install -y --no-install-recommends \
-       locales \
-       python3 \
- && rm -rf /var/lib/apt/lists/* \
- && sed --in-place --regexp-extended 's/^#[[:space:]]*(en_US.UTF-8 UTF-8)$/\1/g' /etc/locale.gen \
- && locale-gen
- 
-ENV LANG en_US.UTF-8
-ENV LANGUAGE en_US:en
-ENV LC_ALL en_US.UTF-8
-
-ARG USER_NAME
-ARG USER_GROUP
-ARG USER_UID
-ARG USER_GID
-RUN if [ -z "${USER_NAME}" ] || [ -z "${USER_GROUP}" ] || [ -z "${USER_UID}" ] || [ -z "${USER_GID}" ]; then \
-		echo 'ERROR: At least one user property is missing. Please check your --build-arg values' \
-	 && exit 1 \
-  ; fi \
- && if [ ${USER_GID} -gt 0 ]; then \
- 		addgroup \
-			--gid "${USER_GID}" \
-			"${USER_GROUP}" \
-  ; fi \
- && if [ ${USER_UID} -gt 0 ]; then \
-		adduser \
- 			--uid "${USER_UID}" \
-			--gid "${USER_GID}" \
-			--gecos "${USER_NAME},,," \
-			--disabled-password \
-			"${USER_NAME}" \
-  ; fi
-
-ARG USER_HOME=/home/${USER_NAME}
-ENV O3DE_DIR=${USER_HOME}/o3de
-
-ENV O3DE_ENGINE_DIR=${O3DE_DIR}/engine
-ENV O3DE_PACKAGES_DIR=${O3DE_DIR}/packages
-ENV O3DE_PROJECT_DIR=${O3DE_DIR}/project
-
-ENV O3TANKS_DIR=${USER_HOME}/o3tanks
-
-RUN mkdir --parents "${O3DE_ENGINE_DIR}" \
- && mkdir --parents "${O3DE_PACKAGES_DIR}" \
- && mkdir --parents "${O3DE_PROJECT_DIR}" \
- && mkdir --parents "${O3TANKS_DIR}" \
- && chown --recursive ${USER_NAME}:${USER_GROUP} "${O3DE_DIR}" \
- && chown --recursive ${USER_NAME}:${USER_GROUP} "${O3TANKS_DIR}"
-
-WORKDIR ${USER_HOME}
-
-# ---
-
-FROM base_bionic AS runtime_dependencies
+FROM base_focal AS runtime_dependencies
 
 RUN export DEBIAN_FRONTEND=noninteractive \
  && apt-get update && apt-get install -y --no-install-recommends \
 		libatomic1 \
 		libcurl4 \
+		libdbus-1-3 \
+		libfontconfig1 \
+		libfreetype6 \
+		libgl1 \
+		libglib2.0-0 \
+		libice6 \
+		libopengl0 \
+		libsm6 \
+		libwebp6 \
+		libwebpmux3 \
+		libwebpdemux2 \
+		libx11-6 \
+		libx11-xcb1 \
 		libxcb1 \
+		libxcb-glx0 \
+		libxcb-shm0 \
+		libxcb-sync1 \
+		libxcb-xfixes0 \
+		libxcb-xinerama0 \
+		libxcb-xinput0 \
+		libxext6 \
+		libxfixes3 \
+		libxi6 \
+		libxkbcommon0 \
+		libxkbcommon-x11-0 \
+		libxrender1 \
 		libvulkan1 \
  && rm -rf /var/lib/apt/lists/*
 
 # ---
 
 FROM runtime_dependencies AS runner_dev
+
+RUN export DEBIAN_FRONTEND=noninteractive \
+ && apt-get update && apt-get install -y --no-install-recommends \
+		libxcb-icccm4 \
+		libxcb-image0 \
+ 		libxcb-keysyms1 \
+		libxcb-randr0 \
+		libxcb-render0 \
+		libxcb-render-util0 \
+		libxcb-shape0 \
+		libxcb-xkb1 \
+ && rm -rf /var/lib/apt/lists/*
 
 ENTRYPOINT [ "python3", "-u", "-m", "o3tanks.runner" ]
 
@@ -277,7 +279,7 @@ COPY --from=cmake_downloader /tmp/keyring.gpg ${KEYRING_PATH}
 RUN export DEBIAN_FRONTEND=noninteractive \
  && apt-get update && apt-get install -y --no-install-recommends \
 		ca-certificates \
- && echo "deb [signed-by=${KEYRING_PATH}] https://apt.kitware.com/ubuntu bionic main" > /etc/apt/sources.list.d/kitware.list \
+ && echo "deb [signed-by=${KEYRING_PATH}] https://apt.kitware.com/ubuntu focal main" > /etc/apt/sources.list.d/kitware.list \
  && apt-get update && apt-get install -y --no-install-recommends \
  		cmake \
  && rm -rf /var/lib/apt/lists/*
