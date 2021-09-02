@@ -407,15 +407,22 @@ def run_runner(engine_version, engine_config, project_dir, headless, *command):
 	else:
 		throw_error(Messages.MISSING_PROJECT)
 
-	host_devices = []
 	if not headless:
-		throw_error(Messages.UNSUPPORTED_LINUX_CLIENT)
-		
+		has_display = True
+	else:
+		has_display = False
+
 	if DEVELOPMENT_MODE:
 		scripts_dir = get_real_bin_file().parent / SCRIPTS_PATH
 		mounts.append(docker.types.Mount(type = "bind", source = str(scripts_dir) , target = str(ROOT_DIR)))
 
-	completed =	run_foreground_container(runner_image, list(command), interactive = is_tty(), mounts = mounts)
+	completed =	run_foreground_container(
+		runner_image,
+		list(command),
+		interactive = is_tty(),
+		display = has_display,
+		mounts = mounts
+	)
 
 	return completed
 
@@ -1034,7 +1041,13 @@ def open_project(project_dir, engine_config = None, new_engine_version = None):
 	if new_engine_version is not None:
 		run_builder(engine_version, None, project_dir, BuilderCommands.SETTINGS, Targets.PROJECT, Settings.ENGINE.value, None, new_engine_version, False, True)
 
-	run_runner(engine_version, engine_config, project_dir, False, RunnerCommands.OPEN)
+	editor_library_file = O3DE_PROJECT_BIN_DIR / engine_config.value / "libAtom_AtomBridge.Editor.so"
+	if not editor_library_file.is_file():
+		built = run_builder(engine_version, engine_config, project_dir, BuilderCommands.BUILD, Targets.PROJECT, engine_config)
+		if not built:
+			throw_error(Messages.UNCOMPLETED_BUILD_PROJECT)
+
+	run_runner(engine_version, engine_config, project_dir, False, RunnerCommands.OPEN, engine_config)
 
 
 def run_project(project_dir, binary, config):	

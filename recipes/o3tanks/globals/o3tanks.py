@@ -137,6 +137,8 @@ def init_from_env(env_name, env_type, default_value):
 
 DEVELOPMENT_MODE = init_from_env("O3TANKS_DEV_MODE", bool, False)
 
+DISPLAY_ID = init_from_env("O3TANKS_DISPLAY_ID", int, -1)
+
 PROJECT_EXTRA_PATH = pathlib.PurePath(".o3tanks")
 PUBLIC_PROJECT_EXTRA_PATH = PROJECT_EXTRA_PATH / "public"
 PRIVATE_PROJECT_EXTRA_PATH = PROJECT_EXTRA_PATH / "private"

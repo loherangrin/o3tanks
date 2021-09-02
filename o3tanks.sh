@@ -350,6 +350,17 @@ init_globals()
 	is_development=$(is_env_active "${O3TANKS_DEV_MODE:-}")
 	readonly DEVELOPMENT_MODE="${is_development}"
 
+	local display_id="${O3TANKS_DISPLAY_ID:-}"
+	if [ -z "${display_id}" ]; then
+		display_id="${DISPLAY:-}"
+	fi
+	case ${display_id} in
+		(:*)
+			display_id="${display_id#:}"
+			;;
+	esac
+	readonly DISPLAY_ID="${display_id}"
+
 	readonly COMMANDS_BUILD='build'
 	readonly COMMANDS_CLEAN='clean'
 	readonly COMMANDS_INIT='init'
@@ -521,6 +532,13 @@ run_cli()
 		dev_env=''
 	fi
 
+	local display_env
+	if [ -n "${DISPLAY_ID}" ]; then
+		display_env="--env O3TANKS_DISPLAY_ID=${DISPLAY_ID}"
+	else
+		display_env=''
+	fi
+
 	local it_options
 	if is_tty ; then
 		it_options='--interactive --tty'
@@ -541,6 +559,7 @@ run_cli()
 		--env O3TANKS_REAL_USER_GID="${REAL_USER_GID}" \
 		${dev_env} \
 		${dev_mount} \
+		${display_env} \
 		${project_mount} \
 		"${cli_image}" \
 		"$0" "${BIN_FILE}" "${docker_root_dir}" "$@"

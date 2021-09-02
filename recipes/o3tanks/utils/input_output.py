@@ -31,6 +31,7 @@ class Level(enum.IntEnum):
 
 
 class Messages(AutoEnum):
+	BINARY_ERROR = enum.auto()
 	BINDING_DIFFERENT_REPOSITORY = enum.auto()
 	BINDING_INSTALL_NOT_FOUND = enum.auto()
 	BINDING_INVALID_REPOSITORY = enum.auto()
@@ -69,6 +70,7 @@ class Messages(AutoEnum):
 	INVALID_DESERIALIZATION_INPUT = enum.auto()
 	INVALID_DESERIALIZATION_OUTPUT = enum.auto()
 	INVALID_DIRECTORY = enum.auto()
+	INVALID_DISPLAY = enum.auto()
 	INVALID_FORK = enum.auto()
 	INVALID_CHANGES = enum.auto()
 	INVALID_CURRENT_USER = enum.auto()
@@ -95,6 +97,7 @@ class Messages(AutoEnum):
 	MISSING_BINARY = enum.auto()
 	MISSING_BOUND_VERSION = enum.auto()
 	MISSING_CONFIG = enum.auto()
+	MISSING_DISPLAY = enum.auto()
 	MISSING_DOCKER = enum.auto()
 	MISSING_INSTALL_AND_CONFIG = enum.auto()
 	MISSING_INSTALL = enum.auto()
@@ -112,6 +115,7 @@ class Messages(AutoEnum):
 	SETTINGS_NOT_FOUND = enum.auto()
 	SOURCE_ALREADY_EXISTS = enum.auto()
 	SOURCE_NOT_FOUND = enum.auto()
+	UNCOMPLETED_BUILD_PROJECT = enum.auto()
 	UNCOMPLETED_IMAGE = enum.auto()
 	UNCOMPLETED_INIT_ENGINE = enum.auto()
 	UNCOMPLETED_INIT_PROJECT = enum.auto()
@@ -121,8 +125,8 @@ class Messages(AutoEnum):
 	UNCOMPLETED_REFRESH = enum.auto()
 	UNCOMPLETED_REGISTRATION = enum.auto()
 	UNINSTALL_COMPLETED = enum.auto()
+	UNREACHABLE_X11_DISPLAY = enum.auto()
 	UNSUPPORTED_LINUX_CLIENT = enum.auto()
-	UNSUPPORTED_LINUX_EDITOR = enum.auto()
 	UPDATES_AVAILABLE = enum.auto()
 	UPGRADE_COMPLETED = enum.auto()
 	UPGRADE_COMPLETED_SKIP_REBUILD = enum.auto()
@@ -187,7 +191,9 @@ def ask_for_input(description_id, required = True):
 
 
 def get_message_text(message_id, *args, **kwargs):
-	if message_id == Messages.BINDING_DIFFERENT_REPOSITORY:
+	if message_id == Messages.BINARY_ERROR:
+		message_text = "An error occurred while executing a required binary: {}"
+	elif message_id == Messages.BINDING_DIFFERENT_REPOSITORY:
 		message_text = "Installed engine differs from the one required by the project. Please use '" + print_command(CliCommands.SETTINGS) + "' to clear the engine version and then re-install it with a different name"
 	elif message_id == Messages.BINDING_INSTALL_NOT_FOUND:
 		message_text = "Project is bound to a non-existing engine. Please use '" + print_command(CliCommands.SETTINGS) + "' to clear it or use '" + print_command(CliCommands.INSTALL) + "' to force a new re-installation"
@@ -269,6 +275,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Unable to deserialize an item: {}. Reason: it isn't a valid value for type '{}'"
 	elif message_id == Messages.INVALID_DIRECTORY:
 		message_text = "Directory path is invalid or empty"
+	elif message_id == Messages.INVALID_DISPLAY:
+		message_text = "Unable to find a valid X11 socket for display :{} at: {}"
 	elif message_id == Messages.INVALID_FORK:
 		message_text = "Invalid fork syntax. Please provide <username>/<fork_name>"
 	elif message_id == Messages.INVALID_CURRENT_USER:
@@ -315,6 +323,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "No version '{}' was found. Please use '" + print_command(CliCommands.INSTALL) + "' to download it or '" + print_command(CliCommands.SETTINGS) + "' to clear it from project settings"
 	elif message_id == Messages.MISSING_CONFIG:
 		message_text = "No engine config was provided"
+	elif message_id == Messages.MISSING_DISPLAY:
+		message_text = "No DISPLAY was found"
 	elif message_id == Messages.MISSING_DOCKER:
 		message_text = "Unable to find 'docker'"
 	elif message_id == Messages.MISSING_INSTALL:
@@ -349,6 +359,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Source code was already cloned"
 	elif message_id == Messages.SOURCE_NOT_FOUND:
 		message_text = "No source repository was found"
+	elif message_id == Messages.UNCOMPLETED_BUILD_PROJECT:
+		message_text = "An unexpected error could be occurred while building the project"
 	elif message_id == Messages.UNCOMPLETED_INIT_ENGINE:
 		message_text = "An unexpected error could be occurred while downloading the engine source code"
 	elif message_id == Messages.UNCOMPLETED_INIT_PROJECT:
@@ -365,10 +377,10 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Unable to upgrade"
 	elif message_id == Messages.UNINSTALL_COMPLETED:
 		message_text = "Operation completed! Version '{}' has been removed"
+	elif message_id == Messages.UNREACHABLE_X11_DISPLAY:
+		message_text = "Unable to connect to display :{}. Your xhost may be blocking connections from the container user.\n\nPlease use the following command to enable it:\nxhost +SI:localuser:#{}"
 	elif message_id == Messages.UNSUPPORTED_LINUX_CLIENT:
 		message_text = "'O3DE (Open 3D Engine)' doesn't yet support Vulkan rendering on Linux. Please visit the dedicated issue for more details: https://github.com/loherangrin/o3tanks/issues/1"
-	elif message_id == Messages.UNSUPPORTED_LINUX_EDITOR:
-		message_text = "'O3DE (Open 3D Engine)' doesn't yet support editor on Linux. Please visit the dedicated issue for more details: https://github.com/loherangrin/o3tanks/issues/1"
 	elif message_id == Messages.UPDATES_AVAILABLE:
 		message_text = "There are {} updates available. Please use '" + print_command(CliCommands.UPGRADE) + "' to update your local installation"
 	elif message_id == Messages.UPGRADE_COMPLETED:

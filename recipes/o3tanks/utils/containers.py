@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from ..globals.o3tanks import DEVELOPMENT_MODE, REAL_USER, USER_NAME, USER_GROUP, get_version_number
+from ..globals.o3tanks import DEVELOPMENT_MODE, DISPLAY_ID, REAL_USER, USER_NAME, USER_GROUP, get_version_number
 from .filesystem import is_directory_empty
 from .input_output import Level, Messages, get_verbose, print_msg, throw_error
 from .serialization import serialize_list
@@ -238,13 +238,17 @@ def exec_in_container(container, command, stdout = False, stderr = False):
 		return (exit_code == 0)
 
 
-def run_detached_container(image_name, wait, mounts = [], network_disabled = False):
+def run_detached_container(image_name, wait, environment = {}, mounts = [], network_disabled = False):
 	if wait:
 		entrypoint = "/bin/sh",
 		command = [ "-c", "tail --follow /dev/null" ]
 	else:
 		entrypoint = None
 		command = []
+
+	full_environment = get_environment_variables()
+	if len(environment) > 0:
+		full_environment.update(environment)
 
 	new_container = DOCKER_CLIENT.containers.run(
 		image_name,
@@ -253,13 +257,34 @@ def run_detached_container(image_name, wait, mounts = [], network_disabled = Fal
 		network_disabled = network_disabled,
 		auto_remove = True,
 		detach = True,
-		environment = get_environment_variables()
+		environment = full_environment
 	)
 
 	return new_container
 
 
-def run_foreground_container(image_name, command = [], interactive = True, mounts = [], network_disabled = False):
+def run_foreground_container(image_name, command = [], environment = {}, interactive = True, mounts = [], display = False, network_disabled = False):
+	full_environment = get_environment_variables()
+	
+	if display:
+		if DISPLAY_ID < 0:
+			throw_error(Messages.MISSING_DISPLAY)
+
+		x11_socket = pathlib.Path("/tmp/.X11-unix/X{}".format(DISPLAY_ID))
+		if not is_in_container() and not x11_socket.is_socket():
+			throw_error(Messages.INVALID_DISPLAY, DISPLAY_ID, x11_socket)
+
+		real_container_user = get_container_user(False)
+
+		full_environment["O3TANKS_REAL_USER_UID"] = real_container_user.uid
+		full_environment["O3TANKS_DISPLAY_ID"] = DISPLAY_ID
+		full_environment["DISPLAY"] = ":{}".format(DISPLAY_ID)
+
+		mounts.append(docker.types.Mount(type = "bind", source = str(x11_socket),  target = str(x11_socket)))
+
+	if len(environment) > 0:
+		full_environment.update(environment)
+
 	try:
 		exit_status = None
 		container = DOCKER_CLIENT.containers.run(
@@ -269,7 +294,7 @@ def run_foreground_container(image_name, command = [], interactive = True, mount
 				auto_remove = True,
 				detach = True,
 				mounts = mounts,
-				environment = get_environment_variables()
+				environment = full_environment
 			)
 
 		logs = container.attach(stdout = True, stderr = True, stream = True)
