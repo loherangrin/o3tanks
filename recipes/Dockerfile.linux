@@ -217,9 +217,19 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		libxcb-xkb1 \
  && rm -rf /var/lib/apt/lists/*
 
+ARG USER_NAME
+ARG INSTALL_GPU_MESA=false
+RUN export DEBIAN_FRONTEND=noninteractive \
+ && apt-get update \
+ && if [ "${INSTALL_GPU_MESA}" = "true" ]; then \
+		apt-get install -y --no-install-recommends \
+ 			mesa-vulkan-drivers \
+	 && usermod --append --groups render,video ${USER_NAME} \
+  ; fi \
+ && rm -rf /var/lib/apt/lists/*
+
 ENTRYPOINT [ "python3", "-u", "-m", "o3tanks.runner" ]
 
-ARG USER_NAME
 USER ${USER_NAME}
 
 

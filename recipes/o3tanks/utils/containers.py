@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from ..globals.o3tanks import DEVELOPMENT_MODE, DISPLAY_ID, REAL_USER, USER_NAME, USER_GROUP, get_version_number
+from ..globals.o3tanks import DEVELOPMENT_MODE, DISPLAY_ID, GPU_DRIVER_NAME, REAL_USER, USER_NAME, USER_GROUP, GPUDrivers, get_version_number
 from .filesystem import is_directory_empty
 from .input_output import Level, Messages, get_verbose, print_msg, throw_error
 from .serialization import serialize_list
@@ -263,7 +263,7 @@ def run_detached_container(image_name, wait, environment = {}, mounts = [], netw
 	return new_container
 
 
-def run_foreground_container(image_name, command = [], environment = {}, interactive = True, mounts = [], display = False, network_disabled = False):
+def run_foreground_container(image_name, command = [], environment = {}, interactive = True, mounts = [], display = False, gpu = False, network_disabled = False):
 	full_environment = get_environment_variables()
 	
 	if display:
@@ -282,6 +282,29 @@ def run_foreground_container(image_name, command = [], environment = {}, interac
 
 		mounts.append(docker.types.Mount(type = "bind", source = str(x11_socket),  target = str(x11_socket)))
 
+	devices = []
+	device_requests = []
+	if gpu:
+		if GPU_DRIVER_NAME is None:
+			print_msg(Level.WARNING, Messages.MISSING_GPU)
+
+		elif GPU_DRIVER_NAME is GPUDrivers.NVIDIA_PROPRIETARY:
+			device_requests.append(docker.types.DeviceRequest(count = -1, capabilities = [ [ "gpu", "display", "graphics", "video" ] ]))
+
+			vulkan_configs = [
+				"/usr/share/vulkan/implicit_layer.d/nvidia_layers.json",
+				"/usr/share/vulkan/icd.d/nvidia_icd.json"
+			]
+
+			for config_file in vulkan_configs:
+				mounts.append(docker.types.Mount(type = "bind", source = config_file, target = config_file, read_only = True))
+
+		elif GPU_DRIVER_NAME in [ GPUDrivers.AMD_OPEN, GPUDrivers.AMD_PROPRIETARY, GPUDrivers.INTEL ]:
+			devices.append("/dev/dri:/dev/dri")
+
+		else:
+			print_msg(Level.WARNING, Messages.INVALID_GPU, GPU_DRIVER_NAME.value)
+
 	if len(environment) > 0:
 		full_environment.update(environment)
 
@@ -293,6 +316,8 @@ def run_foreground_container(image_name, command = [], environment = {}, interac
 				network_disabled = network_disabled,
 				auto_remove = True,
 				detach = True,
+				devices = devices,
+				device_requests = device_requests,
 				mounts = mounts,
 				environment = full_environment
 			)
@@ -318,7 +343,7 @@ def run_foreground_container(image_name, command = [], environment = {}, interac
 
 # --- FUNCTIONS (IMAGES) ---
 
-def build_image_from_archive(tar_file, image_name, recipe, stage = None):
+def build_image_from_archive(tar_file, image_name, recipe, stage = None, arguments = {}):
 	if not tar_file.is_file():
 		throw_error(Messages.CONTEXT_NOT_FOUND, tar_file)
 
@@ -326,6 +351,10 @@ def build_image_from_archive(tar_file, image_name, recipe, stage = None):
 
 	if image_name.endswith(":development"):
 		stage += "_dev"
+
+	full_buildargs = get_build_arguments()
+	if len(arguments) > 0:
+		full_buildargs.update(arguments)
 
 	try:
 		with tar_file.open() as tar_handler:
@@ -337,7 +366,7 @@ def build_image_from_archive(tar_file, image_name, recipe, stage = None):
 				custom_context = True,		
 				tag = image_name,
 				target = stage,
-				buildargs = get_build_arguments()
+				buildargs = full_buildargs
 			)
 
 			print_string_stream(logs)
@@ -352,7 +381,7 @@ def build_image_from_archive(tar_file, image_name, recipe, stage = None):
 	return new_image
 
 
-def build_image_from_directory(context_dir, image_name, recipe, stage = None):
+def build_image_from_directory(context_dir, image_name, recipe, stage = None, arguments = {}):
 	if not context_dir.is_dir():
 		throw_error(Messages.CONTEXT_NOT_FOUND, context_dir)
 
@@ -361,13 +390,17 @@ def build_image_from_directory(context_dir, image_name, recipe, stage = None):
 	if image_name.endswith(":development"):
 		stage += "_dev"
 
+	full_buildargs = get_build_arguments()
+	if len(arguments) > 0:
+		full_buildargs.update(arguments)
+
 	try:
 		new_image, logs = DOCKER_CLIENT.images.build(
 			path = str(context_dir),
 			dockerfile = str(context_dir / recipe),
 			tag = image_name,
 			target = stage,
-			buildargs = get_build_arguments()
+			buildargs = full_buildargs
 		)
 
 		print_string_stream(logs)

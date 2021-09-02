@@ -248,10 +248,17 @@ def check_image(image_id, build_stage):
 			archive_file = None
 			context_dir = pathlib.Path(__file__).resolve().parent
 
-		if archive_file is not None:
-			build_image_from_archive(archive_file, image_name, recipe, build_stage)
+		if image_id is Images.RUNNER:
+			build_arguments = {
+				"INSTALL_GPU_MESA": "true" if GPU_DRIVER_NAME in [ GPUDrivers.AMD_OPEN, GPUDrivers.AMD_PROPRIETARY, GPUDrivers.INTEL ] else "false"
+			}
 		else:
-			build_image_from_directory(context_dir, image_name, recipe, build_stage)
+			build_arguments = {}
+
+		if archive_file is not None:
+			build_image_from_archive(archive_file, image_name, recipe, build_stage, buil_arguments)
+		else:
+			build_image_from_directory(context_dir, image_name, recipe, build_stage, build_arguments)
 
 		if not image_exists(image_name):
 			throw_error(Messages.ERROR_BUILD_IMAGE, image_name)
@@ -409,8 +416,10 @@ def run_runner(engine_version, engine_config, project_dir, headless, *command):
 
 	if not headless:
 		has_display = True
+		has_gpu = True
 	else:
 		has_display = False
+		has_gpu = False
 
 	if DEVELOPMENT_MODE:
 		scripts_dir = get_real_bin_file().parent / SCRIPTS_PATH
@@ -421,6 +430,7 @@ def run_runner(engine_version, engine_config, project_dir, headless, *command):
 		list(command),
 		interactive = is_tty(),
 		display = has_display,
+		gpu = has_gpu,
 		mounts = mounts
 	)
 

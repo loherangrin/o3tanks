@@ -74,6 +74,7 @@ class Messages(AutoEnum):
 	INVALID_FORK = enum.auto()
 	INVALID_CHANGES = enum.auto()
 	INVALID_CURRENT_USER = enum.auto()
+	INVALID_GPU = enum.auto()
 	INVALID_INSTALL_OPTIONS_REMOVE = enum.auto()
 	INVALID_LFS = enum.auto()
 	INVALID_LOCAL_BRANCH = enum.auto()
@@ -99,6 +100,7 @@ class Messages(AutoEnum):
 	MISSING_CONFIG = enum.auto()
 	MISSING_DISPLAY = enum.auto()
 	MISSING_DOCKER = enum.auto()
+	MISSING_GPU = enum.auto()
 	MISSING_INSTALL_AND_CONFIG = enum.auto()
 	MISSING_INSTALL = enum.auto()
 	MISSING_PROJECT = enum.auto()
@@ -281,6 +283,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Invalid fork syntax. Please provide <username>/<fork_name>"
 	elif message_id == Messages.INVALID_CURRENT_USER:
 		message_text = "Unable to calculate the current user"
+	elif message_id == Messages.INVALID_GPU:
+		message_text = "Unable to activate hardware acceleration since current GPU drivers ({}) aren't supported. Falling back to software rendering..."
 	elif message_id == Messages.INVALID_INSTALL_OPTIONS_REMOVE:
 		message_text = "Invalid options combination. At least one option between '" + print_option(LongOptions.REMOVE_BUILD) + "' and '" + print_option(LongOptions.REMOVE_INSTALL) + "' must be set to 'false', or the option '" + print_option(LongOptions.SAVE_IMAGES) + "' must be set to 'true'"
 	elif message_id == Messages.INVALID_LFS:
@@ -327,6 +331,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "No DISPLAY was found"
 	elif message_id == Messages.MISSING_DOCKER:
 		message_text = "Unable to find 'docker'"
+	elif message_id == Messages.MISSING_GPU:
+		message_text = "Unable to activate hardware acceleration since no GPU was found. Falling back to software rendering..."
 	elif message_id == Messages.MISSING_INSTALL:
 		message_text = "The engine for this project is not installed, but it is available at: {}"
 	elif message_id == Messages.MISSING_INSTALL_AND_CONFIG:

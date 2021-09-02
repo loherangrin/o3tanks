@@ -57,6 +57,14 @@ class RunnerCommands(ObjectEnum):
 	RUN = CliCommands.RUN.value
 
 
+class GPUDrivers(ObjectEnum):
+	AMD_OPEN = "amdgpu",
+	AMD_PROPRIETARY = "amdgpu-pro"
+	INTEL = "i915",
+	NVIDIA_OPEN = "nouveau",
+	NVIDIA_PROPRIETARY = "nvidia"
+
+
 class Images(ObjectEnum):
 	BUILDER = "builder"
 	INSTALL_BUILDER = "install-builder"
@@ -138,6 +146,7 @@ def init_from_env(env_name, env_type, default_value):
 DEVELOPMENT_MODE = init_from_env("O3TANKS_DEV_MODE", bool, False)
 
 DISPLAY_ID = init_from_env("O3TANKS_DISPLAY_ID", int, -1)
+GPU_DRIVER_NAME = init_from_env("O3TANKS_GPU", GPUDrivers, None)
 
 PROJECT_EXTRA_PATH = pathlib.PurePath(".o3tanks")
 PUBLIC_PROJECT_EXTRA_PATH = PROJECT_EXTRA_PATH / "public"
