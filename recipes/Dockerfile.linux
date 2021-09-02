@@ -263,10 +263,28 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 
 FROM runtime_dependencies AS development_dependencies
 
-RUN export DEBIAN_FRONTEND=noninteractive \
+RUN FOCAL_SOURCES_FILE="/etc/apt/sources.list" \
+ && BIONIC_SOURCES_FILE="/etc/apt/sources.list.d/bionic.list" \
+ && cp "${FOCAL_SOURCES_FILE}" "${BIONIC_SOURCES_FILE}" \
+ && sed --in-place 's/focal/bionic/g' "${BIONIC_SOURCES_FILE}" \
+ && BIONIC_PINNING_FILE="/etc/apt/preferences.d/bionic" \
+ && echo \
+		'Package: ninja-build' '\n' \
+		'Pin: release n=bionic' '\n' \
+		'Pin-Priority: 990' '\n' \
+		'' \
+		'Package: ninja-build' '\n' \
+		'Pin: release n=focal' '\n' \
+		'Pin-Priority: -1' '\n' \
+		'' \
+		'Package: *' '\n' \
+		'Pin: release n=bionic' '\n' \
+		'Pin-Priority: -1' '\n' \
+	> "${BIONIC_PINNING_FILE}" \
+ && export DEBIAN_FRONTEND=noninteractive \
  && apt-get update && apt-get install -y --no-install-recommends \
 		build-essential \
-		ninja-build \
+		ninja-build=1.8.2-1 \
 		clang-6.0 \
 		uuid-dev \
 		libz-dev \
@@ -282,7 +300,9 @@ RUN export DEBIAN_FRONTEND=noninteractive \
 		libfontconfig1-dev \
 		libopus-dev \
 		libwebp-dev \
- && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/* \
+ && rm "${BIONIC_PINNING_FILE}" \
+ && rm "${BIONIC_SOURCES_FILE}"
 
 ARG KEYRING_PATH=/usr/share/keyrings/kitware-archive-keyring.gpg
 COPY --from=cmake_downloader /tmp/keyring.gpg ${KEYRING_PATH}
