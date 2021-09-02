@@ -78,6 +78,44 @@ def build_engine(engine_config, binaries):
 			
 			copy_all(from_path, to_path)
 
+	current_ap_config_file = O3DE_ENGINE_SOURCE_DIR / "Registry" / "AssetProcessorPlatformConfig.setreg"
+	current_ap_buffer = []
+	new_ap_config_file = current_ap_config_file.with_suffix(".setreg.tmp")
+	new_ap_handler = None
+
+	with current_ap_config_file.open('r') as current_ap_handler:
+		while True:
+			line = current_ap_handler.readline()
+			if len(line) == 0:
+				break
+
+			elif '"pattern": ".*/[Uu]ser/.*"' in line:
+				current_ap_buffer.append('                    "pattern": "{}/[Uu]ser/.*"\n'.format(str(O3DE_ENGINE_SOURCE_DIR)))
+				current_ap_buffer.append('                },\n')
+				current_ap_buffer.append('                "Exclude User2": {\n')
+				current_ap_buffer.append('                    "pattern": "{}/[Uu]ser/.*"\n'.format(str(O3DE_PROJECT_SOURCE_DIR)))
+
+				new_ap_handler = new_ap_config_file.open('w')
+				new_ap_handler.writelines(current_ap_buffer)
+				break
+
+			else:
+				current_ap_buffer.append(line)
+
+		if new_ap_handler is not None:
+			while True:
+				line = current_ap_handler.readline()
+				if len(line) == 0:
+					break
+
+				new_ap_handler.write(line)
+
+			new_ap_handler.close()
+
+	if new_ap_handler is not None:
+		current_ap_config_file.unlink()
+		new_ap_config_file.rename(current_ap_config_file)
+
 	return result.returncode
 
 
