@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from ..globals.o3tanks import EngineSettings, PRIVATE_PROJECT_SETTINGS_PATH, PUBLIC_PROJECT_SETTINGS_PATH
+from ..globals.o3tanks import PRIVATE_PROJECT_SETTINGS_PATH, PUBLIC_PROJECT_SETTINGS_PATH, EngineSettings
 from .filesystem import read_cfg_property
 from .input_output import Messages, throw_error
 from .types import CfgPropertyKey, Repository, RepositoryResult, RepositoryResultType
@@ -45,7 +45,7 @@ def get_engine_repository_from_source(source_dir):
 		repository_branch = None
 		repository_revision = repository_reference.strip('\n\t ')
 	else:		
-		return RepositoryResult(ResultType.INVALID)
+		return RepositoryResult(RepositoryResultType.INVALID)
 
 	return RepositoryResult(RepositoryResultType.OK , Repository(repository_url, repository_branch, repository_revision))
 

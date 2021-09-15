@@ -37,7 +37,7 @@ def register_project():
 def run_asset_processor(config):
 	asset_processor_file = O3DE_PROJECT_BIN_DIR / config.value / "AssetProcessor"
 	if not asset_processor_file.is_file():
-		throw_error(Messages.MISSING_BINARY, str(asset_processor_file), config.value, asset_processor_file.value)
+		throw_error(Messages.MISSING_BINARY, str(asset_processor_file), config.value, "")
 
 	asset_processor = run_binary(asset_processor_file, False)
 
@@ -77,7 +77,7 @@ def run_binary(binary_file, wait = True):
 def open_project(config):
 	binary_file = O3DE_PROJECT_BIN_DIR / config.value / "Editor"
 	if not binary_file.is_file():
-		throw_error(Messages.MISSING_BINARY, str(binary_file), config.value, binary_file.value)
+		throw_error(Messages.MISSING_BINARY, str(binary_file), config.value, "")
 
 	register_project()
 	asset_processor = run_asset_processor(config)

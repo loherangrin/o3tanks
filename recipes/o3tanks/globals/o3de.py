@@ -16,7 +16,6 @@
 from ..utils.filesystem import is_directory_empty
 from ..utils.types import ObjectEnum
 from .o3tanks import USER_NAME, init_from_env
-import os
 import pathlib
 
 

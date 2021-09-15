@@ -50,7 +50,7 @@ get_message_text()
 			echo "Unable to find 'python3'"
 			;;
 
-		("${MESSAGE_VOLUMES_DIR_NOT_FOUND}")
+		("${MESSAGES_VOLUMES_DIR_NOT_FOUND}")
 			echo 'Unable to find the volumes storage at: %s'
 			;;
 
@@ -313,7 +313,7 @@ check_image()
 check_nvidia_docker()
 {
 	if ! command -v nvidia-container-toolkit > /dev/null 2>&1 ; then
-		throw_error "${MESSAGE_MISSING_NVIDIA_DOCKER}"
+		throw_error "${MESSAGES_MISSING_NVIDIA_DOCKER}"
 	fi
 }
 
@@ -397,7 +397,7 @@ init_globals()
 	readonly MESSAGES_MISSING_DOCKER=5
 	readonly MESSAGES_MISSING_NVIDIA_DOCKER=6
 	readonly MESSAGES_MISSING_PYTHON=7
-	readonly MESSAGE_VOLUMES_DIR_NOT_FOUND=8
+	readonly MESSAGES_VOLUMES_DIR_NOT_FOUND=8
 
 	readonly SHORT_OPTION_PROJECT='p'
 	readonly LONG_OPTION_PROJECT='project'

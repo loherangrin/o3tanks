@@ -14,7 +14,7 @@
 
 
 from ..utils.types import ObjectEnum
-from .input_output import throw_error
+from .input_output import Messages, throw_error
 import pathlib
 import sys
 
@@ -34,7 +34,7 @@ def deserialize_args(start_index, end_index = None, output_type = str):
 
 def deserialize_list(input_list, output_type):
 	if not isinstance(input_list, list):
-		throw_error(Messages.INVALID_DESERIALIZATION_INPUT, input_value, "list", type(input_value).__name__)
+		throw_error(Messages.INVALID_DESERIALIZATION_INPUT, input_list, "list", type(input_list).__name__)
 
 	output_list = []
 	for input_value in input_list:

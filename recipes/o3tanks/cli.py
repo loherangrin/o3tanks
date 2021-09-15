@@ -1165,6 +1165,7 @@ def handle_install_command(engine_version, engine_config_name, repository, fork,
 def handle_list_command():
 	check_container_client()
 	list_engines()
+	close_container_client()
 
 
 def handle_refresh_command(engine_version):
@@ -1234,6 +1235,8 @@ def parse_project_path(value):
 	project_dir = pathlib.Path(value if value is not None else '.')
 	if not project_dir.is_absolute():
 		project_dir = project_dir.resolve()
+
+	return project_dir
 
 
 def handle_build_command(project_path, binary_name, config_name):

@@ -42,12 +42,12 @@ def generate_configurations(source_dir, build_dir):
 
 def get_setting_key(setting_section, setting_name):
 	if not Settings.has_value(setting_section):
-		throw_error(Messages.INVALID_SETTING_SECTION, setting_key.section)
+		throw_error(Messages.INVALID_SETTING_SECTION, setting_section)
 
 	if setting_section == Settings.ENGINE.value:
 		section = EngineSettings
 	else:
-		throw_error(Messages.INVALID_SETTING_SECTION, setting_key.section)
+		throw_error(Messages.INVALID_SETTING_SECTION, setting_section)
 
 	setting_key = section.from_value(CfgPropertyKey(setting_section, setting_name))
 	if setting_key is None:
@@ -60,7 +60,7 @@ def get_setting_key(setting_section, setting_name):
 
 def build_engine(engine_config, binaries):
 	if not O3DE_ENGINE_BUILD_DIR.exists() or is_directory_empty(O3DE_ENGINE_BUILD_DIR):
-		generate_engine_configurations
+		generate_engine_configurations()
 
 	result = subprocess.run([
 		"cmake",
@@ -178,7 +178,7 @@ def build_project(config, binary):
 
 	try:
 		subprocess.run([ O3DE_CLI_FILE, "register", "--this-engine" ], stdout = subprocess.DEVNULL, check = True)
-		subprocess.run([ O3DE_CLI_FILE, "register", "--project-path", O3DE_PROJECT_SOURCE_DIR ], stdout = subprocess.DEVNULL, check = True)	
+		subprocess.run([ O3DE_CLI_FILE, "register", "--project-path", O3DE_PROJECT_SOURCE_DIR ], stdout = subprocess.DEVNULL, check = True) 
 
 	except subprocess.CalledProcessError as error:
 		throw_error(Messages.UNCOMPLETED_REGISTRATION, error.returncode, "\n{}\n{}".format(error.stdout, error.stderr))
@@ -446,12 +446,6 @@ def main():
 
 		else:
 			throw_error(Messages.INVALID_TARGET, target.value)
-
-	elif command == RunnerCommands.RUN:
-		binary = deserialize_arg(2, O3DE_ProjectBinaries)
-		config = deserialize_arg(3, O3DE_Configs)
-
-		run_project(binary, config)
 
 	else:
 		throw_error(Messages.INVALID_COMMAND, command.value)
