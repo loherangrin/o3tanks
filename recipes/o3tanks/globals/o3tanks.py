@@ -144,6 +144,7 @@ def init_from_env(env_name, env_type, default_value):
 # --- CONSTANTS ---
 
 DEVELOPMENT_MODE = init_from_env("O3TANKS_DEV_MODE", bool, False)
+RUN_CONTAINERS = not init_from_env("O3TANKS_NO_CONTAINERS", bool, False)
 
 DISPLAY_ID = init_from_env("O3TANKS_DISPLAY_ID", int, -1)
 GPU_DRIVER_NAME = init_from_env("O3TANKS_GPU", GPUDrivers, None)
@@ -165,6 +166,11 @@ REAL_USER = User(
 )
 
 ROOT_DIR = init_from_env("O3TANKS_DIR", pathlib.Path, pathlib.PosixPath("/home/{}/o3tanks".format(USER_NAME)))
+DATA_DIR = init_from_env("O3TANKS_DATA_DIR", pathlib.Path, (pathlib.PosixPath.home() / ".local" / "share"))
+if DATA_DIR is not None:
+	if not DATA_DIR.is_absolute():
+		DATA_DIR = DATA_DIR.resolve()
+
 RECIPES_PATH = pathlib.PurePath("recipes")
 SCRIPTS_PATH = RECIPES_PATH / "o3tanks"
 

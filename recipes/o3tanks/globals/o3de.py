@@ -15,7 +15,7 @@
 
 from ..utils.filesystem import is_directory_empty
 from ..utils.types import ObjectEnum
-from .o3tanks import USER_NAME, init_from_env
+from .o3tanks import RUN_CONTAINERS, USER_NAME, init_from_env
 import pathlib
 
 
@@ -43,7 +43,7 @@ O3DE_ENGINE_SOURCE_DIR = init_from_env("O3DE_ENGINE_DIR", pathlib.Path, O3DE_ROO
 O3DE_ENGINE_REPOSITORY_DIR = O3DE_ENGINE_SOURCE_DIR / ".git"
 O3DE_ENGINE_BUILD_DIR = O3DE_ENGINE_SOURCE_DIR / "build"
 O3DE_ENGINE_INSTALL_DIR = O3DE_ENGINE_SOURCE_DIR / "install"
-if O3DE_ENGINE_INSTALL_DIR.is_dir() and not is_directory_empty(O3DE_ENGINE_INSTALL_DIR):
+if RUN_CONTAINERS and O3DE_ENGINE_INSTALL_DIR.is_dir() and not is_directory_empty(O3DE_ENGINE_INSTALL_DIR):
 	O3DE_ENGINE_BIN_DIR = O3DE_ENGINE_INSTALL_DIR / "bin" / "Linux"
 	O3DE_ENGINE_SCRIPTS_DIR = O3DE_ENGINE_INSTALL_DIR / "scripts"
 else:

@@ -81,6 +81,20 @@ is_env_active()
 	return 0
 }
 
+is_env_inactive()
+{
+	local env_value="${1:-}"
+
+	local is_active
+	is_active=$(is_env_active "${env_value}")
+
+	local is_inactive
+	is_inactive=$(not_bool_string "${is_active}")
+	
+	echo "${is_inactive}"
+	return 0
+}
+
 is_tty()
 {
 	if ! [ -t 0 ] && [ -t 1 ]; then
@@ -402,9 +416,16 @@ init_globals()
 	readonly SHORT_OPTION_PROJECT='p'
 	readonly LONG_OPTION_PROJECT='project'
 
-	local no_run_cli_container
-	no_run_cli_container=$(is_env_active "${O3TANKS_NO_CLI_CONTAINER:-}")
-	readonly RUN_CONTAINERS_CLI=$(not_bool_string "${no_run_cli_container}")
+	local run_containers_all
+	local run_containers_cli
+	run_containers_all=$(is_env_inactive "${O3TANKS_NO_CONTAINERS:-}")
+	if [ "${run_containers_all}" = 'false' ]; then
+		run_containers_cli='false'
+	else
+		run_containers_cli=$(is_env_inactive "${O3TANKS_NO_CLI_CONTAINER:-}")
+	fi
+	readonly RUN_CONTAINERS_ALL=${run_containers_all}
+	readonly RUN_CONTAINERS_CLI="${run_containers_cli}"
 
 	local host_user_name
 	local host_user_group
@@ -428,7 +449,7 @@ init_globals()
 	local real_user_group
 	local real_user_uid
 	local real_user_gid
-	if is_rootless_runtime ; then
+	if [ "${RUN_CONTAINERS_CLI}" = 'true' ] && is_rootless_runtime ; then
 		real_user_name='o3tanks'
 		real_user_group="${real_user_name}"
 
@@ -459,6 +480,7 @@ init_globals()
 	readonly RECIPES_PATH='recipes'
 	readonly SCRIPTS_PATH="${RECIPES_PATH}/o3tanks"
 
+	readonly DATA_DIR="${O3TANKS_DATA_DIR:-}"
 	readonly RECIPES_DIR="/home/${USER_NAME}/o3tanks_recipes"
 	readonly SCRIPTS_DIR="/home/${USER_NAME}/o3tanks"
 }
@@ -469,6 +491,16 @@ run_cli()
 		check_python
 		
 		export PYTHONPATH="${BIN_DIR}/${RECIPES_PATH}:${PYTHONPATH:-}"
+		if [ -n "${DISPLAY_ID}" ]; then
+			export O3TANKS_DISPLAY_ID="${DISPLAY_ID}"
+		fi
+		if [ "${RUN_CONTAINERS_ALL}" = 'false' ]; then
+			export O3TANKS_NO_CONTAINERS='true'
+		fi
+		if [ -n "${DATA_DIR}" ]; then
+			export O3TANKS_DATA_DIR="${DATA_DIR}"
+		fi
+
 		python3 -m "o3tanks.cli" "$0" "${BIN_FILE}" "-" "$@"
 		return
 	fi
@@ -491,7 +523,7 @@ run_cli()
 	local docker_volumes_dir
 	docker_volumes_dir="${docker_root_dir}/volumes"
 	if ! [ -d "${docker_volumes_dir}" ]; then
-		throw_error "${MESSAGE_VOLUMES_DIR_NOT_FOUND}"
+		throw_error "${MESSAGES_VOLUMES_DIR_NOT_FOUND}"
 	fi
 
 	local project_mount
