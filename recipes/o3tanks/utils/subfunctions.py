@@ -54,6 +54,9 @@ def get_binary_filename(name):
 	if OPERATING_SYSTEM is OperatingSystems.LINUX:
 		return name
 
+	elif OPERATING_SYSTEM is OperatingSystems.MAC:
+		return pathlib.PurePosixPath("{0}.app/Contents/MacOS/{0}".format(name))
+
 	elif OPERATING_SYSTEM is OperatingSystems.WINDOWS:
 		return "{}.exe".format(name)
 
@@ -65,6 +68,9 @@ def get_library_filename(name):
 	if OPERATING_SYSTEM is OperatingSystems.LINUX:
 		extension = "so"
 
+	elif OPERATING_SYSTEM is OperatingSystems.MAC:
+		extension = "dylib"
+
 	elif OPERATING_SYSTEM is OperatingSystems.WINDOWS:
 		extension =  "dll"
 
@@ -75,7 +81,7 @@ def get_library_filename(name):
 
 
 def get_script_filename(name):
-	if OPERATING_SYSTEM is OperatingSystems.LINUX:
+	if OPERATING_SYSTEM in [ OperatingSystems.LINUX, OperatingSystems.MAC ]:
 		extension = "sh"
 
 	elif OPERATING_SYSTEM is OperatingSystems.WINDOWS:
