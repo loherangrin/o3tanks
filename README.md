@@ -39,10 +39,15 @@ cd my_project
 o3tanks init --engine development --as MyProject
 ```
 
-Build and run a headless instance of the project: 
+Open the editor to develop the project:
 ```
-o3tanks build server
-o3tanks run server
+o3tanks open
+```
+
+Build and run an instance of the project:
+```
+o3tanks build client
+o3tanks run client
 ```
 
 See which engine version the project is using:
