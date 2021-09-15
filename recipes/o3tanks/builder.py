@@ -26,15 +26,30 @@ import subprocess
 # -- SUBFUNCTIONS ---
 
 def generate_configurations(source_dir, build_dir):
-	result = execute_cmake([
+	common_options = [
 		"-B", str(build_dir),
 		"-S", str(source_dir),
-		"-G", "Ninja Multi-Config",
-		"-DCMAKE_C_COMPILER=clang-6.0",
-		"-DCMAKE_CXX_COMPILER=clang++-6.0",
 		"-DLY_UNITY_BUILD=ON",
 		"-DLY_3RDPARTY_PATH={}".format(O3DE_PACKAGES_DIR)
-	])
+	]
+
+	if OPERATING_SYSTEM is OperatingSystems.LINUX:
+		os_options = [
+			"-G", "Ninja Multi-Config",
+			"-DCMAKE_C_COMPILER=clang-6.0",
+			"-DCMAKE_CXX_COMPILER=clang++-6.0"
+		]
+
+	elif OPERATING_SYSTEM is OperatingSystems.WINDOWS:
+		os_options = [
+			"-G", "Visual Studio 16 2019"
+		]
+	
+	else:
+		throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM)
+
+	all_options = common_options + os_options
+	result = execute_cmake(all_options)
 
 	return (result is not None and result.returncode == 0)
 
@@ -62,7 +77,7 @@ def execute_cmake(arguments):
 		result = subprocess.run([ cmake_file ] + arguments)
 
 	except FileNotFoundError as error:
-		if error.filename == cmake_file:
+		if error.filename == cmake_file or (OperatingSystems.WINDOWS and error.filename is None):
 			throw_error(Messages.MISSING_CMAKE)
 		else:
 			raise error
@@ -76,11 +91,17 @@ def build_engine(engine_config, binaries):
 	if not O3DE_ENGINE_BUILD_DIR.exists() or is_directory_empty(O3DE_ENGINE_BUILD_DIR):
 		generate_engine_configurations()
 
-	result = execute_cmake([
+	options = [
 		"--build", str(O3DE_ENGINE_BUILD_DIR),
 		"--config", engine_config.value,
 		"--target", ', '.join(binaries) if (binaries is not None) else "install"
-	])
+	]
+
+	if OPERATING_SYSTEM is OperatingSystems.WINDOWS:
+		options.append("--")
+		options.append("/m")
+
+	result = execute_cmake(options)
 
 	if binaries is None:
 		required_paths = [ (pathlib.PurePath("python") / "runtime") ]
@@ -156,13 +177,13 @@ def clean_engine(engine_config, remove_build, remove_install):
 
 
 def generate_engine_configurations():
-	get_python_file = "get_python.sh"
+	get_python_file = get_script_filename("get_python")
 
 	try:
 		result = subprocess.run([ O3DE_ENGINE_SOURCE_DIR / "python" / get_python_file ])
 
 	except FileNotFoundError as error:
-		if error.filename == get_python_file:
+		if error.filename == get_python_file or (OperatingSystems.WINDOWS and error.filename is None):
 			throw_error(Messages.CORRUPTED_ENGINE_SOURCE, error.filename)
 		else:
 			raise error
@@ -205,7 +226,7 @@ def build_project(config, binary):
 		subprocess.run([ O3DE_CLI_FILE, "register", "--project-path", str(O3DE_PROJECT_SOURCE_DIR) ], stdout = subprocess.DEVNULL, check = True)
 
 	except FileNotFoundError as error:
-		if error.filename == O3DE_CLI_FILE.name:
+		if error.filename == O3DE_CLI_FILE.name or (OperatingSystems.WINDOWS and error.filename is None):
 			throw_error(Messages.CORRUPTED_ENGINE_SOURCE, error.filename)
 		else:
 			raise error
@@ -218,11 +239,17 @@ def build_project(config, binary):
 		if not generated:
 			throw_error(Messages.UNCOMPLETED_SOLUTION_GENERATION)
 
-	result = execute_cmake([
+	options = [
 		"--build", str(O3DE_PROJECT_BUILD_DIR),
 		"--config", config.value,
 		"--target", target_name
-	])
+	]
+
+	if OPERATING_SYSTEM is OperatingSystems.WINDOWS:
+		options.append("--")
+		options.append("/m")
+
+	result = execute_cmake(options)
 
 	return result.returncode
 
@@ -262,7 +289,7 @@ def clean_project(config, force):
 			subprocess.run([ O3DE_CLI_FILE, "register", "--project-path", str(O3DE_PROJECT_SOURCE_DIR) ], stdout = subprocess.DEVNULL, check = True)
 
 		except FileNotFoundError as error:
-			if error.filename == O3DE_CLI_FILE.name:
+			if error.filename == O3DE_CLI_FILE.name or (OperatingSystems.WINDOWS and error.filename is None):
 				throw_error(Messages.CORRUPTED_ENGINE_SOURCE, error.filename)
 			else:
 				raise error
@@ -291,7 +318,7 @@ def generate_project_configurations(project_name, engine_version):
 			])
 
 	except FileNotFoundError as error:
-		if error.filename == O3DE_CLI_FILE.name:
+		if error.filename == O3DE_CLI_FILE.name or (OperatingSystems.WINDOWS and error.filename is None):
 			throw_error(Messages.CORRUPTED_ENGINE_SOURCE, error.filename)
 		else:
 			raise error

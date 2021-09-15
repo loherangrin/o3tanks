@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from ..globals.o3tanks import PRIVATE_PROJECT_SETTINGS_PATH, PUBLIC_PROJECT_SETTINGS_PATH, EngineSettings
+from ..globals.o3tanks import OPERATING_SYSTEM, PRIVATE_PROJECT_SETTINGS_PATH, PUBLIC_PROJECT_SETTINGS_PATH, EngineSettings, OperatingSystems
 from .filesystem import read_cfg_property
 from .input_output import Messages, throw_error
 from .types import CfgPropertyKey, Repository, RepositoryResult, RepositoryResultType
@@ -48,6 +48,43 @@ def get_engine_repository_from_source(source_dir):
 		return RepositoryResult(RepositoryResultType.INVALID)
 
 	return RepositoryResult(RepositoryResultType.OK , Repository(repository_url, repository_branch, repository_revision))
+
+
+def get_binary_filename(name):
+	if OPERATING_SYSTEM is OperatingSystems.LINUX:
+		return name
+
+	elif OPERATING_SYSTEM is OperatingSystems.WINDOWS:
+		return "{}.exe".format(name)
+
+	else:
+		throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM)
+
+
+def get_library_filename(name):
+	if OPERATING_SYSTEM is OperatingSystems.LINUX:
+		extension = "so"
+
+	elif OPERATING_SYSTEM is OperatingSystems.WINDOWS:
+		extension =  "dll"
+
+	else:
+		throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM)
+
+	return "{}.{}".format(name, extension)
+
+
+def get_script_filename(name):
+	if OPERATING_SYSTEM is OperatingSystems.LINUX:
+		extension = "sh"
+
+	elif OPERATING_SYSTEM is OperatingSystems.WINDOWS:
+		extension =  "bat"
+
+	else:
+		throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM)
+
+	return "{}.{}".format(name, extension)
 
 
 def is_commit(reference):

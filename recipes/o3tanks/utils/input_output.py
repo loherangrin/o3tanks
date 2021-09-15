@@ -81,6 +81,7 @@ class Messages(AutoEnum):
 	INVALID_LFS = enum.auto()
 	INVALID_LOCAL_BRANCH = enum.auto()
 	INVALID_REMOTE_BRANCH = enum.auto()
+	INVALID_OPERATING_SYSTEM = enum.auto()
 	INVALID_OPTION = enum.auto()
 	INVALID_PROJECT_NAME = enum.auto()
 	INVALID_REPOSITORY = enum.auto()
@@ -307,6 +308,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Unable to parse the local branch"
 	elif message_id == Messages.INVALID_REMOTE_BRANCH:
 		message_text = "Unable to parse the remote branch tracked by local branch '{}'"
+	elif message_id == Messages.INVALID_OPERATING_SYSTEM:
+		message_text = "The current operating system is not supported: {}"
 	elif message_id == Messages.INVALID_OPTION:
 		message_text = "Unsupported option: {}"
 	elif message_id == Messages.INVALID_PROJECT_NAME:
@@ -361,10 +364,10 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Unable to find an engine installation for version '{}' and config '{}'. Please use '" + print_command(CliCommands.INSTALL) + "' to add it and try again"
 	elif message_id == Messages.MISSING_MODULE:
 		message_text = "Unable to find '{0}' module.\nPlease add it to your Python installation using:\npython -m pip install {0}"
-	elif message_id == Messages.MISSING_PROJECT:
-		message_text = "Project cannot be empty"
 	elif message_id == Messages.MISSING_PYTHON:
 		message_text = "Unable to find a valid Python 3 installation"
+	elif message_id == Messages.MISSING_PROJECT:
+		message_text = "Project cannot be empty"
 	elif message_id == Messages.MISSING_VERSION:
 		message_text = "No version '{}' was found. Please use '" + print_command(CliCommands.INSTALL) + "' to download it and try again"
 	elif message_id == Messages.NO_UPDATES:

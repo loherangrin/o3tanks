@@ -14,18 +14,26 @@
 
 
 from ..globals.o3de import O3DE_ENGINE_BUILD_DIR, O3DE_ENGINE_INSTALL_DIR, O3DE_ENGINE_SOURCE_DIR, O3DE_PACKAGES_DIR, O3DE_PROJECT_SOURCE_DIR
-from ..globals.o3tanks import DATA_DIR, DEVELOPMENT_MODE, DISPLAY_ID, GPU_DRIVER_NAME, REAL_USER, RUN_CONTAINERS, ROOT_DIR, USER_NAME, USER_GROUP, GPUDrivers, Images, Volumes, get_version_number
+from ..globals.o3tanks import DATA_DIR, DEVELOPMENT_MODE, DISPLAY_ID, GPU_DRIVER_NAME, OPERATING_SYSTEM, REAL_USER, RUN_CONTAINERS, ROOT_DIR, USER_NAME, USER_GROUP, GPUDrivers, Images, OperatingSystems, Volumes, get_version_number
 from .filesystem import clear_directory, is_directory_empty
 from .input_output import Level, Messages, get_verbose, print_msg, throw_error
 from .serialization import serialize_list
 from .types import AutoEnum, User
 import abc
 import enum
-import grp
 import os
 import pathlib
-import pwd
 import re
+
+if OPERATING_SYSTEM is OperatingSystems.LINUX:
+	import grp
+	import pwd
+
+elif OPERATING_SYSTEM is OperatingSystems.WINDOWS:
+	import getpass
+
+else:
+	throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM)
 
 
 # --- TYPES ---
@@ -135,11 +143,22 @@ class ContainerClient(abc.ABC):
 
 
 	def get_current_user(self):
-		uid = os.getuid()
-		gid = os.getgid()
+		if OPERATING_SYSTEM is OperatingSystems.LINUX:
+			uid = os.getuid()
+			gid = os.getgid()
 
-		name = pwd.getpwuid(uid).pw_name
-		group = grp.getgrgid(gid).gr_name
+			name = pwd.getpwuid(uid).pw_name
+			group = grp.getgrgid(gid).gr_name
+
+		elif OPERATING_SYSTEM is OperatingSystems.WINDOWS:
+			uid = None
+			gid = None
+
+			name = getpass.getuser()
+			group = None
+
+		else:
+			throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM)
 
 		return User(name, group, uid, gid)
 
@@ -747,7 +766,7 @@ class NoneContainerClient(ContainerClient):
 
 	@staticmethod
 	def _execute_python(command, environment, wait):
-		for python_binary in [ "python3", "python" ]:
+		for python_binary in [ "python3", "python", "py" ]:
 			try:
 				command[0] = python_binary
 
@@ -821,7 +840,7 @@ class NoneContainerClient(ContainerClient):
 
 		full_environment = NoneContainerClient._get_environment_variables()
 
-		if display:
+		if display and (OPERATING_SYSTEM is OperatingSystems.LINUX):
 			if DISPLAY_ID < 0:
 				throw_error(Messages.MISSING_DISPLAY)
 

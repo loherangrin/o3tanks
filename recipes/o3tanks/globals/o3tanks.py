@@ -16,6 +16,7 @@
 from ..utils.types import AutoEnum, CfgPropertyKey, ObjectEnum, User
 import os
 import pathlib
+import platform
 
 
 # --- TYPES ---
@@ -71,6 +72,11 @@ class Images(ObjectEnum):
 	INSTALL_RUNNER = "install-runner"
 	RUNNER = "runner"
 	UPDATER = "updater"
+
+
+class OperatingSystems(ObjectEnum):
+	LINUX = "Linux"
+	WINDOWS = "Windows"
 
 
 class LongOptions(ObjectEnum):
@@ -141,6 +147,39 @@ def init_from_env(env_name, env_type, default_value):
 	return value
 
 
+def get_os():
+	current_os = platform.system()
+	if current_os == "Linux":
+		return OperatingSystems.LINUX
+	elif current_os == "Windows":
+		return OperatingSystems.WINDOWS
+	else:
+		return None
+
+
+def get_default_root_dir():
+	path = "/home/{}/o3tanks".format(USER_NAME)
+
+	return (pathlib.PosixPath(path) if RUN_CONTAINERS else pathlib.PurePosixPath(path))
+
+
+def get_default_data_dir(operating_system):
+	if RUN_CONTAINERS:
+		return None
+
+	if operating_system is OperatingSystems.LINUX:
+		data_dir = pathlib.PosixPath.home() / ".local" / "share"
+
+	elif operating_system is OperatingSystems.WINDOWS:
+		data_dir = pathlib.WindowsPath(os.environ["LOCALAPPDATA"])
+
+	else:
+		return None
+
+	data_dir /= "o3tanks"
+	return data_dir
+
+
 # --- CONSTANTS ---
 
 DEVELOPMENT_MODE = init_from_env("O3TANKS_DEV_MODE", bool, False)
@@ -148,6 +187,8 @@ RUN_CONTAINERS = not init_from_env("O3TANKS_NO_CONTAINERS", bool, False)
 
 DISPLAY_ID = init_from_env("O3TANKS_DISPLAY_ID", int, -1)
 GPU_DRIVER_NAME = init_from_env("O3TANKS_GPU", GPUDrivers, None)
+
+OPERATING_SYSTEM = get_os()
 
 PROJECT_EXTRA_PATH = pathlib.PurePath(".o3tanks")
 PUBLIC_PROJECT_EXTRA_PATH = PROJECT_EXTRA_PATH / "public"
@@ -165,8 +206,8 @@ REAL_USER = User(
 	init_from_env("O3TANKS_REAL_USER_GID", int, None)
 )
 
-ROOT_DIR = init_from_env("O3TANKS_DIR", pathlib.Path, pathlib.PosixPath("/home/{}/o3tanks".format(USER_NAME)))
-DATA_DIR = init_from_env("O3TANKS_DATA_DIR", pathlib.Path, (pathlib.PosixPath.home() / ".local" / "share"))
+ROOT_DIR = init_from_env("O3TANKS_DIR", pathlib.Path, get_default_root_dir())
+DATA_DIR = init_from_env("O3TANKS_DATA_DIR",pathlib.Path, get_default_data_dir(OPERATING_SYSTEM))
 if DATA_DIR is not None:
 	if not DATA_DIR.is_absolute():
 		DATA_DIR = DATA_DIR.resolve()
