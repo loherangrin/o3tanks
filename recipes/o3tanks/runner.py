@@ -18,13 +18,79 @@ from .globals.o3tanks import *
 from .utils.filesystem import *
 from .utils.input_output import *
 from .utils.serialization import *
+from .utils.types import *
 import subprocess
+import time
+
+
+# -- SUBFUNCTIONS ---
+
+def register_project():
+	try:
+		subprocess.run([ O3DE_CLI_FILE, "register", "--this-engine" ], stdout = subprocess.DEVNULL, check = True)
+		subprocess.run([ O3DE_CLI_FILE, "register", "--project-path", O3DE_PROJECT_SOURCE_DIR ], stdout = subprocess.DEVNULL, check = True)
+
+	except subprocess.CalledProcessError as error:
+		throw_error(Messages.UNCOMPLETED_REGISTRATION, error.returncode, "\n{}\n{}".format(error.stdout, error.stderr))
+
+
+def run_asset_processor(config):
+	asset_processor_file = O3DE_PROJECT_BIN_DIR / config.value / "AssetProcessor"
+	if not asset_processor_file.is_file():
+		throw_error(Messages.MISSING_BINARY, str(asset_processor_file), config.value, asset_processor_file.value)
+
+	asset_processor = run_binary(asset_processor_file, False)
+
+	time.sleep(1)
+	if asset_processor.poll() is not None:
+		error_code = asset_processor.returncode
+		if error_code == -6:
+			throw_error(Messages.UNREACHABLE_X11_DISPLAY, DISPLAY_ID, REAL_USER.uid)
+		else:
+			throw_error(Messages.BINARY_ERROR, asset_processor_file)
+	else:
+		time.sleep(4)
+
+	return asset_processor
+
+
+def run_binary(binary_file, wait = True):
+	command = [
+		binary_file,
+		"--engine-path={}".format(O3DE_ENGINE_SOURCE_DIR),
+		"--project-path={}".format(O3DE_PROJECT_SOURCE_DIR),
+		"--regset=/Amazon/AzCore/Bootstrap/engine_path={}".format(O3DE_ENGINE_SOURCE_DIR),
+		"--regset=/Amazon/AzCore/Bootstrap/project_path={}".format(O3DE_PROJECT_SOURCE_DIR)
+	]
+
+	if wait:
+		result = subprocess.run(command)
+		return result
+
+	else:
+		handler = subprocess.Popen(command)
+		return handler
 
 
 # --- FUNCTIONS (PROJECT) ---
 
-def open_project():
-	throw_error(Messages.UNSUPPORTED_LINUX_EDITOR)
+def open_project(config):
+	binary_file = O3DE_PROJECT_BIN_DIR / config.value / "Editor"
+	if not binary_file.is_file():
+		throw_error(Messages.MISSING_BINARY, str(binary_file), config.value, binary_file.value)
+
+	register_project()
+	asset_processor = run_asset_processor(config)
+
+	result = run_binary(binary_file)
+
+	if asset_processor is not None:
+		if result.returncode == 0:
+			asset_processor.terminate()
+		else:
+			asset_processor.wait()
+
+	exit(result.returncode)
 
 
 def run_project(binary, config):
@@ -34,9 +100,10 @@ def run_project(binary, config):
 
 	if binary == O3DE_ProjectBinaries.CLIENT:
 		binary_name = "GameLauncher"
-		throw_error(Messages.UNSUPPORTED_LINUX_CLIENT)
+		has_gui = True
 	elif binary == O3DE_ProjectBinaries.SERVER:
 		binary_name = "ServerLauncher"
+		has_gui = False
 	else:
 		throw_error(Messages.INVALID_BINARY, binary.value)
 
@@ -44,14 +111,13 @@ def run_project(binary, config):
 	if not binary_file.is_file():
 		throw_error(Messages.MISSING_BINARY, str(binary_file), config.value, binary.value)
 
-	try:
-		subprocess.run([ O3DE_CLI_FILE, "register", "--this-engine" ], stdout = subprocess.DEVNULL, check = True)
-		subprocess.run([ O3DE_CLI_FILE, "register", "--project-path", O3DE_PROJECT_SOURCE_DIR ], stdout = subprocess.DEVNULL, check = True)	
+	register_project()
 
-	except subprocess.CalledProcessError as error:
-		throw_error(Messages.UNCOMPLETED_REGISTRATION, error.returncode, "\n{}\n{}".format(error.stdout, error.stderr))
+	result = run_binary(binary_file, True)
+	error_code = result.returncode
+	if has_gui and (error_code == -6):
+		throw_error(Messages.UNREACHABLE_X11_DISPLAY, DISPLAY_ID, REAL_USER.uid)
 
-	result = subprocess.run([ binary_file ])
 	exit(result.returncode)
 
 
@@ -70,7 +136,9 @@ def main():
 		throw_error(Messages.INVALID_COMMAND, sys.argv[1])
 
 	elif command == RunnerCommands.OPEN:
-		open_project()
+		config = deserialize_arg(2, O3DE_Configs)
+
+		open_project(config)
 
 	elif command == RunnerCommands.RUN:
 		binary = deserialize_arg(2, O3DE_ProjectBinaries)

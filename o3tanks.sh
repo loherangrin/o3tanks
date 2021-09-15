@@ -42,6 +42,10 @@ get_message_text()
 			echo "Unable to find 'docker'"
 			;;
 
+		("${MESSAGES_MISSING_NVIDIA_DOCKER}")
+			echo "Unable to find 'nvidia-docker'. At least 'nvidia-container-toolkit' package is required to enable GPU acceleration.\n\nPlease refer to NVIDIA documentation:\nhttps://docs.nvidia.com/datacenter/cloud-native/container-toolkit/arch-overview.html"
+			;;
+
 		("${MESSAGES_MISSING_PYTHON}")
 			echo "Unable to find 'python3'"
 			;;
@@ -306,11 +310,26 @@ check_image()
 	fi
 }
 
+check_nvidia_docker()
+{
+	if ! command -v nvidia-container-toolkit > /dev/null 2>&1 ; then
+		throw_error "${MESSAGE_MISSING_NVIDIA_DOCKER}"
+	fi
+}
+
 check_python()
 {
 	if ! command -v python3 > /dev/null 2>&1; then
 		throw_error "${MESSAGES_MISSING_PYTHON}"
 	fi
+}
+
+get_gpu_driver()
+{
+	local gpu_driver
+	gpu_driver=$(lspci -vmmnk | awk '/^Class:[[:space:]]+0300$/{is_vga=1;next}; is_vga && /^Driver:/{print $2;exit}')
+
+	echo "${gpu_driver}"
 }
 
 init_globals()
@@ -350,6 +369,17 @@ init_globals()
 	is_development=$(is_env_active "${O3TANKS_DEV_MODE:-}")
 	readonly DEVELOPMENT_MODE="${is_development}"
 
+	local display_id="${O3TANKS_DISPLAY_ID:-}"
+	if [ -z "${display_id}" ]; then
+		display_id="${DISPLAY:-}"
+	fi
+	case ${display_id} in
+		(:*)
+			display_id="${display_id#:}"
+			;;
+	esac
+	readonly DISPLAY_ID="${display_id}"
+
 	readonly COMMANDS_BUILD='build'
 	readonly COMMANDS_CLEAN='clean'
 	readonly COMMANDS_INIT='init'
@@ -365,8 +395,9 @@ init_globals()
 	readonly MESSAGES_INVALID_SYMLINK=3
 	readonly MESSAGES_INVALID_USER_NAMESPACE=4
 	readonly MESSAGES_MISSING_DOCKER=5
-	readonly MESSAGES_MISSING_PYTHON=6
-	readonly MESSAGE_VOLUMES_DIR_NOT_FOUND=7
+	readonly MESSAGES_MISSING_NVIDIA_DOCKER=6
+	readonly MESSAGES_MISSING_PYTHON=7
+	readonly MESSAGE_VOLUMES_DIR_NOT_FOUND=8
 
 	readonly SHORT_OPTION_PROJECT='p'
 	readonly LONG_OPTION_PROJECT='project'
@@ -521,6 +552,35 @@ run_cli()
 		dev_env=''
 	fi
 
+	local display_env
+	if [ -n "${DISPLAY_ID}" ]; then
+		display_env="--env O3TANKS_DISPLAY_ID=${DISPLAY_ID}"
+	else
+		display_env=''
+	fi
+
+	local gpu_env
+	case ${1:-} in
+		("${COMMANDS_OPEN}"|"${COMMANDS_RUN}")
+			local gpu_driver
+			gpu_driver=$(get_gpu_driver)
+
+			if [ -n "${gpu_driver}" ]; then
+				if [ "${gpu_driver}" = "nvidia" ]; then
+					check_nvidia_docker
+				fi
+
+				gpu_env="--env O3TANKS_GPU=${gpu_driver}"
+			else
+				gpu_env=''
+			fi
+			;;
+
+		(*)
+			gpu_env=''
+			;;
+	esac
+
 	local it_options
 	if is_tty ; then
 		it_options='--interactive --tty'
@@ -541,6 +601,8 @@ run_cli()
 		--env O3TANKS_REAL_USER_GID="${REAL_USER_GID}" \
 		${dev_env} \
 		${dev_mount} \
+		${display_env} \
+		${gpu_env} \
 		${project_mount} \
 		"${cli_image}" \
 		"$0" "${BIN_FILE}" "${docker_root_dir}" "$@"

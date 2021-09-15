@@ -16,6 +16,7 @@ Features:
 1. Verify you meet the following requirements:
    - Linux-based operating system with a POSIX-compliant shell.
    - Docker Engine 19.03 (or greater), both root and rootless mode are supported. See [official documentation](https://docs.docker.com/get-docker/) for installation details.
+   - NVIDIA Docker 2 (or greater), if using a NVIDIA GPU with proprietary drivers. See [official documentation](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) for installation details.
 2. Clone this repository into a directory of your choice.
 3. (Optional) Register `o3tanks` globally creating a symbolic link to the main shell script:
    ```
@@ -38,10 +39,15 @@ cd my_project
 o3tanks init --engine development --as MyProject
 ```
 
-Build and run a headless instance of the project: 
+Open the editor to develop the project:
 ```
-o3tanks build server
-o3tanks run server
+o3tanks open
+```
+
+Build and run an instance of the project:
+```
+o3tanks build client
+o3tanks run client
 ```
 
 See which engine version the project is using:

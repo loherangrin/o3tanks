@@ -78,6 +78,44 @@ def build_engine(engine_config, binaries):
 			
 			copy_all(from_path, to_path)
 
+	current_ap_config_file = O3DE_ENGINE_SOURCE_DIR / "Registry" / "AssetProcessorPlatformConfig.setreg"
+	current_ap_buffer = []
+	new_ap_config_file = current_ap_config_file.with_suffix(".setreg.tmp")
+	new_ap_handler = None
+
+	with current_ap_config_file.open('r') as current_ap_handler:
+		while True:
+			line = current_ap_handler.readline()
+			if len(line) == 0:
+				break
+
+			elif '"pattern": ".*/[Uu]ser/.*"' in line:
+				current_ap_buffer.append('                    "pattern": "{}/[Uu]ser/.*"\n'.format(str(O3DE_ENGINE_SOURCE_DIR)))
+				current_ap_buffer.append('                },\n')
+				current_ap_buffer.append('                "Exclude User2": {\n')
+				current_ap_buffer.append('                    "pattern": "{}/[Uu]ser/.*"\n'.format(str(O3DE_PROJECT_SOURCE_DIR)))
+
+				new_ap_handler = new_ap_config_file.open('w')
+				new_ap_handler.writelines(current_ap_buffer)
+				break
+
+			else:
+				current_ap_buffer.append(line)
+
+		if new_ap_handler is not None:
+			while True:
+				line = current_ap_handler.readline()
+				if len(line) == 0:
+					break
+
+				new_ap_handler.write(line)
+
+			new_ap_handler.close()
+
+	if new_ap_handler is not None:
+		current_ap_config_file.unlink()
+		new_ap_config_file.rename(current_ap_config_file)
+
 	return result.returncode
 
 
@@ -116,21 +154,27 @@ def generate_engine_configurations():
 # --- FUNCTIONS (PROJECT) ---
 
 def build_project(config, binary):
-	if binary == O3DE_ProjectBinaries.CLIENT:
-		target_name = "GameLauncher"
-
-	elif binary == O3DE_ProjectBinaries.SERVER:
-		target_name = "ServerLauncher"
-
-	else:
-		throw_error(Messages.INVALID_BINARY, binary.value)
-
 	if is_directory_empty(O3DE_PROJECT_SOURCE_DIR):
 		throw_error(Messages.PROJECT_DIR_EMPTY)
 
-	project_name = read_json_property(O3DE_PROJECT_SOURCE_DIR / "project.json", "project_name")
-	if project_name is None:
-		throw_error(Messages.INVALID_PROJECT_NAME)
+	if binary is None:
+		target_name = "Editor"
+
+	else:
+		if binary == O3DE_ProjectBinaries.CLIENT:
+			target_name = "GameLauncher"
+
+		elif binary == O3DE_ProjectBinaries.SERVER:
+			target_name = "ServerLauncher"
+
+		else:
+			throw_error(Messages.INVALID_BINARY, binary.value)
+
+		project_name = read_json_property(O3DE_PROJECT_SOURCE_DIR / "project.json", "project_name")
+		if project_name is None:
+			throw_error(Messages.INVALID_PROJECT_NAME)
+
+		target_name = "{}.{}".format(project_name, target_name)
 
 	try:
 		subprocess.run([ O3DE_CLI_FILE, "register", "--this-engine" ], stdout = subprocess.DEVNULL, check = True)
@@ -146,7 +190,7 @@ def build_project(config, binary):
 		"cmake",
 		"--build", O3DE_PROJECT_BUILD_DIR,
 		"--config", config.value,
-		"--target", "{}.{}".format(project_name, target_name)
+		"--target", target_name
 	])
 
 	return result.returncode
@@ -337,7 +381,7 @@ def main():
 				exit(exit_code)
 
 		elif target == Targets.PROJECT:
-			binary = deserialize_arg(4, O3DE_ProjectBinaries)
+			binary = deserialize_arg(4, O3DE_ProjectBinaries) if len(sys.argv) > 4 else None
 
 			exit_code = build_project(config, binary)
 			if exit_code != 0:

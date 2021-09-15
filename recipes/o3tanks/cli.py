@@ -248,10 +248,17 @@ def check_image(image_id, build_stage):
 			archive_file = None
 			context_dir = pathlib.Path(__file__).resolve().parent
 
-		if archive_file is not None:
-			build_image_from_archive(archive_file, image_name, recipe, build_stage)
+		if image_id is Images.RUNNER:
+			build_arguments = {
+				"INSTALL_GPU_MESA": "true" if GPU_DRIVER_NAME in [ GPUDrivers.AMD_OPEN, GPUDrivers.AMD_PROPRIETARY, GPUDrivers.INTEL ] else "false"
+			}
 		else:
-			build_image_from_directory(context_dir, image_name, recipe, build_stage)
+			build_arguments = {}
+
+		if archive_file is not None:
+			build_image_from_archive(archive_file, image_name, recipe, build_stage, buil_arguments)
+		else:
+			build_image_from_directory(context_dir, image_name, recipe, build_stage, build_arguments)
 
 		if not image_exists(image_name):
 			throw_error(Messages.ERROR_BUILD_IMAGE, image_name)
@@ -407,15 +414,25 @@ def run_runner(engine_version, engine_config, project_dir, headless, *command):
 	else:
 		throw_error(Messages.MISSING_PROJECT)
 
-	host_devices = []
 	if not headless:
-		throw_error(Messages.UNSUPPORTED_LINUX_CLIENT)
-		
+		has_display = True
+		has_gpu = True
+	else:
+		has_display = False
+		has_gpu = False
+
 	if DEVELOPMENT_MODE:
 		scripts_dir = get_real_bin_file().parent / SCRIPTS_PATH
 		mounts.append(docker.types.Mount(type = "bind", source = str(scripts_dir) , target = str(ROOT_DIR)))
 
-	completed =	run_foreground_container(runner_image, list(command), interactive = is_tty(), mounts = mounts)
+	completed =	run_foreground_container(
+		runner_image,
+		list(command),
+		interactive = is_tty(),
+		display = has_display,
+		gpu = has_gpu,
+		mounts = mounts
+	)
 
 	return completed
 
@@ -1034,7 +1051,13 @@ def open_project(project_dir, engine_config = None, new_engine_version = None):
 	if new_engine_version is not None:
 		run_builder(engine_version, None, project_dir, BuilderCommands.SETTINGS, Targets.PROJECT, Settings.ENGINE.value, None, new_engine_version, False, True)
 
-	run_runner(engine_version, engine_config, project_dir, False, RunnerCommands.OPEN)
+	editor_library_file = O3DE_PROJECT_BIN_DIR / engine_config.value / "libAtom_AtomBridge.Editor.so"
+	if not editor_library_file.is_file():
+		built = run_builder(engine_version, engine_config, project_dir, BuilderCommands.BUILD, Targets.PROJECT, engine_config)
+		if not built:
+			throw_error(Messages.UNCOMPLETED_BUILD_PROJECT)
+
+	run_runner(engine_version, engine_config, project_dir, False, RunnerCommands.OPEN, engine_config)
 
 
 def run_project(project_dir, binary, config):	
