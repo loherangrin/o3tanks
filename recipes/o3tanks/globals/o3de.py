@@ -14,8 +14,9 @@
 
 
 from ..utils.filesystem import is_directory_empty
+from ..utils.subfunctions import get_script_filename
 from ..utils.types import ObjectEnum
-from .o3tanks import RUN_CONTAINERS, USER_NAME, init_from_env
+from .o3tanks import OPERATING_SYSTEM, RUN_CONTAINERS, USER_NAME, init_from_env
 import pathlib
 
 
@@ -32,29 +33,37 @@ class O3DE_ProjectBinaries(ObjectEnum):
 	SERVER = "server"
 
 
+# --- FUNCTIONS ---
+
+def get_default_root_dir():
+	path = "/home/{}/o3de".format(USER_NAME)
+
+	return (pathlib.PosixPath(path) if RUN_CONTAINERS else pathlib.PurePosixPath(path))
+
+
 # --- CONSTANTS ---
 
 O3DE_REPOSITORY_HOST = "https://github.com"
 O3DE_REPOSITORY_URL = O3DE_REPOSITORY_HOST + "/o3de/o3de.git"
 
-O3DE_ROOT_DIR = init_from_env("O3DE_DIR", pathlib.Path, pathlib.PosixPath("/home/{}/o3de".format(USER_NAME)))
+O3DE_ROOT_DIR = init_from_env("O3DE_DIR", pathlib.Path, get_default_root_dir())
 
 O3DE_ENGINE_SOURCE_DIR = init_from_env("O3DE_ENGINE_DIR", pathlib.Path, O3DE_ROOT_DIR / "engine")
 O3DE_ENGINE_REPOSITORY_DIR = O3DE_ENGINE_SOURCE_DIR / ".git"
 O3DE_ENGINE_BUILD_DIR = O3DE_ENGINE_SOURCE_DIR / "build"
 O3DE_ENGINE_INSTALL_DIR = O3DE_ENGINE_SOURCE_DIR / "install"
 if RUN_CONTAINERS and O3DE_ENGINE_INSTALL_DIR.is_dir() and not is_directory_empty(O3DE_ENGINE_INSTALL_DIR):
-	O3DE_ENGINE_BIN_DIR = O3DE_ENGINE_INSTALL_DIR / "bin" / "Linux"
+	O3DE_ENGINE_BIN_DIR = O3DE_ENGINE_INSTALL_DIR / "bin" / OPERATING_SYSTEM.value
 	O3DE_ENGINE_SCRIPTS_DIR = O3DE_ENGINE_INSTALL_DIR / "scripts"
 else:
 	O3DE_ENGINE_BIN_DIR = O3DE_ENGINE_BUILD_DIR / "bin"
 	O3DE_ENGINE_SCRIPTS_DIR = O3DE_ENGINE_SOURCE_DIR / "scripts"
-O3DE_CLI_FILE = O3DE_ENGINE_SCRIPTS_DIR / "o3de.sh"
+O3DE_CLI_FILE = O3DE_ENGINE_SCRIPTS_DIR / get_script_filename("o3de")
 
 O3DE_PACKAGES_DIR = init_from_env("O3DE_PACKAGES_DIR", pathlib.Path, O3DE_ROOT_DIR / "packages")
 
 O3DE_PROJECT_SOURCE_DIR = init_from_env("O3DE_PROJECT_DIR", pathlib.Path, O3DE_ROOT_DIR / "project")
-O3DE_PROJECT_BUILD_DIR = O3DE_PROJECT_SOURCE_DIR / "build" / "Linux"
+O3DE_PROJECT_BUILD_DIR = O3DE_PROJECT_SOURCE_DIR / "build" / OPERATING_SYSTEM.value
 O3DE_PROJECT_BIN_DIR = O3DE_PROJECT_BUILD_DIR / "bin"
 
 O3DE_DEFAULT_VERSION = "development"

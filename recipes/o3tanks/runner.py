@@ -18,6 +18,7 @@ from .globals.o3tanks import *
 from .utils.filesystem import *
 from .utils.input_output import *
 from .utils.serialization import *
+from .utils.subfunctions import *
 from .utils.types import *
 import subprocess
 import time
@@ -31,7 +32,7 @@ def register_project():
 		subprocess.run([ O3DE_CLI_FILE, "register", "--project-path", O3DE_PROJECT_SOURCE_DIR ], stdout = subprocess.DEVNULL, check = True)
 
 	except FileNotFoundError as error:
-		if error.filename == O3DE_CLI_FILE.name:
+		if error.filename == O3DE_CLI_FILE.name or (OperatingSystems.WINDOWS and error.filename is None):
 			throw_error(Messages.CORRUPTED_ENGINE_SOURCE)
 		else:
 			raise error
@@ -41,7 +42,7 @@ def register_project():
 
 
 def run_asset_processor(config):
-	asset_processor_file = O3DE_PROJECT_BIN_DIR / config.value / "AssetProcessor"
+	asset_processor_file = O3DE_PROJECT_BIN_DIR / config.value / get_binary_filename("AssetProcessor")
 	if not asset_processor_file.is_file():
 		throw_error(Messages.MISSING_BINARY, str(asset_processor_file), config.value, "")
 
@@ -81,7 +82,7 @@ def run_binary(binary_file, wait = True):
 # --- FUNCTIONS (PROJECT) ---
 
 def open_project(config):
-	binary_file = O3DE_PROJECT_BIN_DIR / config.value / "Editor"
+	binary_file = O3DE_PROJECT_BIN_DIR / config.value / get_binary_filename("Editor")
 	if not binary_file.is_file():
 		throw_error(Messages.MISSING_BINARY, str(binary_file), config.value, "")
 

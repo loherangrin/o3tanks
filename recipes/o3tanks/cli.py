@@ -91,7 +91,11 @@ def has_install_config(install_dir, config):
 
 
 def has_configuration(config_dir):
-	return (config_dir.is_dir() and ((config_dir / "Editor").is_file() or any(config_dir.glob("**/*.GameLauncher")) or any(config_dir.glob("**/*.ServerLauncher"))))
+	return config_dir.is_dir() and (
+		(config_dir / get_binary_filename("Editor")).is_file() or
+		any(config_dir.glob(get_binary_filename("**/*.GameLauncher"))) or
+		any(config_dir.glob(get_binary_filename("**/*.ServerLauncher")))
+	)
 
 
 def is_engine_installed(engine_version):
@@ -1096,7 +1100,7 @@ def open_project(project_dir, engine_config = None, new_engine_version = None):
 	if new_engine_version is not None:
 		run_builder(engine_version, None, project_dir, BuilderCommands.SETTINGS, Targets.PROJECT, Settings.ENGINE.value, None, new_engine_version, False, True)
 
-	editor_library_file = project_dir / "build" / "Linux" / "bin" / engine_config.value / "libAtom_AtomBridge.Editor.so"
+	editor_library_file = project_dir / "build" / OPERATING_SYSTEM.value / "bin" / engine_config.value / get_library_filename("libEditorCore")
 	if not editor_library_file.is_file():
 		built = run_builder(engine_version, engine_config, project_dir, BuilderCommands.BUILD, Targets.PROJECT, engine_config)
 		if not built:
