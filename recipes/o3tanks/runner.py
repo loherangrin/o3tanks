@@ -100,9 +100,10 @@ def run_project(binary, config):
 
 	if binary == O3DE_ProjectBinaries.CLIENT:
 		binary_name = "GameLauncher"
-		throw_error(Messages.UNSUPPORTED_LINUX_CLIENT)
+		has_gui = True
 	elif binary == O3DE_ProjectBinaries.SERVER:
 		binary_name = "ServerLauncher"
+		has_gui = False
 	else:
 		throw_error(Messages.INVALID_BINARY, binary.value)
 
@@ -111,12 +112,11 @@ def run_project(binary, config):
 		throw_error(Messages.MISSING_BINARY, str(binary_file), config.value, binary.value)
 
 	register_project()
-	asset_processor = run_asset_processor(config)
 
 	result = run_binary(binary_file, True)
-
-	if asset_processor is not None:
-		asset_processor.terminate()
+	error_code = result.returncode
+	if has_gui and (error_code == -6):
+		throw_error(Messages.UNREACHABLE_X11_DISPLAY, DISPLAY_ID, REAL_USER.uid)
 
 	exit(result.returncode)
 

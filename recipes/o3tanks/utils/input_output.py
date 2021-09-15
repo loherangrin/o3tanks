@@ -128,7 +128,6 @@ class Messages(AutoEnum):
 	UNCOMPLETED_REGISTRATION = enum.auto()
 	UNINSTALL_COMPLETED = enum.auto()
 	UNREACHABLE_X11_DISPLAY = enum.auto()
-	UNSUPPORTED_LINUX_CLIENT = enum.auto()
 	UPDATES_AVAILABLE = enum.auto()
 	UPGRADE_COMPLETED = enum.auto()
 	UPGRADE_COMPLETED_SKIP_REBUILD = enum.auto()
@@ -385,8 +384,6 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Operation completed! Version '{}' has been removed"
 	elif message_id == Messages.UNREACHABLE_X11_DISPLAY:
 		message_text = "Unable to connect to display :{}. Your xhost may be blocking connections from the container user.\n\nPlease use the following command to enable it:\nxhost +SI:localuser:#{}"
-	elif message_id == Messages.UNSUPPORTED_LINUX_CLIENT:
-		message_text = "'O3DE (Open 3D Engine)' doesn't yet support Vulkan rendering on Linux. Please visit the dedicated issue for more details: https://github.com/loherangrin/o3tanks/issues/1"
 	elif message_id == Messages.UPDATES_AVAILABLE:
 		message_text = "There are {} updates available. Please use '" + print_command(CliCommands.UPGRADE) + "' to update your local installation"
 	elif message_id == Messages.UPGRADE_COMPLETED:
