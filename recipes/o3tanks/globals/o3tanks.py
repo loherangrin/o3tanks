@@ -76,6 +76,7 @@ class Images(ObjectEnum):
 
 class OperatingSystems(ObjectEnum):
 	LINUX = "Linux"
+	MAC = "MacOS"
 	WINDOWS = "Windows"
 
 
@@ -151,6 +152,8 @@ def get_os():
 	current_os = platform.system()
 	if current_os == "Linux":
 		return OperatingSystems.LINUX
+	elif current_os == "Darwin":
+		return OperatingSystems.MAC
 	elif current_os == "Windows":
 		return OperatingSystems.WINDOWS
 	else:
@@ -169,6 +172,9 @@ def get_default_data_dir(operating_system):
 
 	if operating_system is OperatingSystems.LINUX:
 		data_dir = pathlib.PosixPath.home() / ".local" / "share"
+
+	elif operating_system is OperatingSystems.MAC:
+		data_dir = pathlib.PosixPath.home() / "Library" / "Application Support"
 
 	elif operating_system is OperatingSystems.WINDOWS:
 		data_dir = pathlib.WindowsPath(os.environ["LOCALAPPDATA"])

@@ -40,6 +40,11 @@ def generate_configurations(source_dir, build_dir):
 			"-DCMAKE_CXX_COMPILER=clang++-6.0"
 		]
 
+	elif OPERATING_SYSTEM is OperatingSystems.MAC:
+		os_options = [
+			"-G", "XCode"
+		]
+
 	elif OPERATING_SYSTEM is OperatingSystems.WINDOWS:
 		os_options = [
 			"-G", "Visual Studio 16 2019"

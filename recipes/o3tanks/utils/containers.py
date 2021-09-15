@@ -25,7 +25,7 @@ import os
 import pathlib
 import re
 
-if OPERATING_SYSTEM is OperatingSystems.LINUX:
+if OPERATING_SYSTEM in [ OperatingSystems.LINUX, OperatingSystems.MAC ]:
 	import grp
 	import pwd
 
@@ -143,7 +143,7 @@ class ContainerClient(abc.ABC):
 
 
 	def get_current_user(self):
-		if OPERATING_SYSTEM is OperatingSystems.LINUX:
+		if OPERATING_SYSTEM in [ OperatingSystems.LINUX, OperatingSystems.MAC ]:
 			uid = os.getuid()
 			gid = os.getgid()
 

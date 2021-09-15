@@ -30,6 +30,10 @@ get_message_text()
 			echo 'Expecting a directory, but none was found at: %s'
 			;;
 
+		("${MESSAGES_INVALID_OPERATING_SYSTEM}")
+			echo 'The current operating system is not supported: %s'
+			;;
+
 		("${MESSAGES_INVALID_SYMLINK}")
 			echo "Unable to resolve a broken symlink: %s"
 			;;
@@ -47,7 +51,11 @@ get_message_text()
 			;;
 
 		("${MESSAGES_MISSING_PYTHON}")
-			echo "Unable to find 'python3'"
+			echo "Unable to find 'python' or 'python3'"
+			;;
+
+		("${MESSAGES_UNSUPPORTED_CONTAINTERS_MODE}")
+			echo "Containers are not supported on %s. Please unset any value for 'O3TANKS_NO_CONTAINERS' in your system variables"
 			;;
 
 		("${MESSAGES_VOLUMES_DIR_NOT_FOUND}")
@@ -327,13 +335,17 @@ check_image()
 check_nvidia_docker()
 {
 	if ! command -v nvidia-container-toolkit > /dev/null 2>&1 ; then
-		throw_error "${MESSAGES_MISSING_NVIDIA_DOCKER}"
+		throw_error "${MESSAGE_MISSING_NVIDIA_DOCKER}"
 	fi
 }
 
 check_python()
 {
-	if ! command -v python3 > /dev/null 2>&1; then
+	if command -v python3 > /dev/null 2>&1; then
+		PYTHON_BIN_FILE='python3'
+	elif command -v python > /dev/null 2>&1; then
+		PYTHON_BIN_FILE='python'
+	else
 		throw_error "${MESSAGES_MISSING_PYTHON}"
 	fi
 }
@@ -344,6 +356,30 @@ get_gpu_driver()
 	gpu_driver=$(lspci -vmmnk | awk '/^Class:[[:space:]]+0300$/{is_vga=1;next}; is_vga && /^Driver:/{print $2;exit}')
 
 	echo "${gpu_driver}"
+}
+
+get_os()
+{
+	local os_name
+	os_name=$(uname -s)
+
+	local os_type
+	case ${os_name} in
+		('Darwin')
+			os_type="${OPERATING_SYSTEMS_MAC}"
+			;;
+
+		('Linux')
+			os_type="${OPERATING_SYSTEMS_LINUX}"
+			;;
+
+		(*)
+			throw_error "${MESSAGES_INVALID_OPERATING_SYSTEM}" "${current_os}"
+			;;
+	esac
+
+	echo "${os_type}"
+	return 0
 }
 
 init_globals()
@@ -406,22 +442,42 @@ init_globals()
 
 	readonly MESSAGES_BIN_DIR_NOT_FOUND=1
 	readonly MESSAGES_INVALID_DIRECTORY=2
-	readonly MESSAGES_INVALID_SYMLINK=3
-	readonly MESSAGES_INVALID_USER_NAMESPACE=4
-	readonly MESSAGES_MISSING_DOCKER=5
-	readonly MESSAGES_MISSING_NVIDIA_DOCKER=6
-	readonly MESSAGES_MISSING_PYTHON=7
-	readonly MESSAGES_VOLUMES_DIR_NOT_FOUND=8
+	readonly MESSAGES_INVALID_OPERATING_SYSTEM=3
+	readonly MESSAGES_INVALID_SYMLINK=4
+	readonly MESSAGES_INVALID_USER_NAMESPACE=5
+	readonly MESSAGES_MISSING_DOCKER=6
+	readonly MESSAGES_MISSING_NVIDIA_DOCKER=7
+	readonly MESSAGES_MISSING_PYTHON=8
+	readonly MESSAGES_UNSUPPORTED_CONTAINTERS_MODE=9
+	readonly MESSAGES_VOLUMES_DIR_NOT_FOUND=10
+
+	readonly OPERATING_SYSTEMS_LINUX=1
+	readonly OPERATING_SYSTEMS_MAC=2
 
 	readonly SHORT_OPTION_PROJECT='p'
 	readonly LONG_OPTION_PROJECT='project'
 
+	local current_os
+	current_os=$(get_os)
+	readonly OPERATING_SYSTEM="${current_os}"
+
+	local no_containers_default
+	if [ "${OPERATING_SYSTEM}" = "${OPERATING_SYSTEMS_MAC}" ]; then
+		no_containers_default='true'
+	else
+		no_containers_default='false'
+	fi
+
 	local run_containers_all
 	local run_containers_cli
-	run_containers_all=$(is_env_inactive "${O3TANKS_NO_CONTAINERS:-}")
+	run_containers_all=$(is_env_inactive "${O3TANKS_NO_CONTAINERS:-$no_containers_default}")
 	if [ "${run_containers_all}" = 'false' ]; then
 		run_containers_cli='false'
 	else
+		if [ "${OPERATING_SYSTEM}" = "${OPERATING_SYSTEMS_MAC}" ]; then
+			throw_error "${MESSAGES_UNSUPPORTED_CONTAINTERS_MODE}" "MacOS"
+		fi
+
 		run_containers_cli=$(is_env_inactive "${O3TANKS_NO_CLI_CONTAINER:-}")
 	fi
 	readonly RUN_CONTAINERS_ALL=${run_containers_all}
@@ -501,7 +557,7 @@ run_cli()
 			export O3TANKS_DATA_DIR="${DATA_DIR}"
 		fi
 
-		python3 -m "o3tanks.cli" "$0" "${BIN_FILE}" "-" "$@"
+		"${PYTHON_BIN_FILE}" -m "o3tanks.cli" "$0" "${BIN_FILE}" "-" "$@"
 		return
 	fi
 	
