@@ -13,10 +13,18 @@ Features:
 
 ## Install
 
-1. Verify you meet the following requirements:
-   - Linux-based operating system with a POSIX-compliant shell.
-   - Docker Engine 19.03 (or greater), both root and rootless mode are supported. See [official documentation](https://docs.docker.com/get-docker/) for installation details.
-   - NVIDIA Docker 2 (or greater), if using a NVIDIA GPU with proprietary drivers. See [official documentation](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) for installation details.
+> Differences between two modes are available in the [Overview](https://github.com/loherangrin/o3tanks/wiki/overview) page.
+
+1. Verify you meet the following requirements, according to the preferred mode:
+   - **Containerized mode**
+     - Linux-based operating system with a POSIX-compliant shell.
+     - Docker Engine 19.03 (or greater), both root and rootless mode are supported. See [official documentation](https://docs.docker.com/get-docker/) for installation details.
+     - NVIDIA Docker 2 (or greater), if using a NVIDIA GPU with proprietary drivers. See [official documentation](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) for installation details.
+   - **Native mode**
+     - Linux-based operating system with a POSIX-compliant shell.
+     - CMake 3.20.5 (or greater).
+     - Python 3.8 (or greater).
+     - pygit2 1.6.1 (or greater)
 2. Clone this repository into a directory of your choice.
 3. (Optional) Register `o3tanks` globally creating a symbolic link to the main shell script:
    ```

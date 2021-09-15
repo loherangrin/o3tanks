@@ -43,9 +43,10 @@ class Messages(AutoEnum):
 	CHANGE_OWNERSHIP_SELF = enum.auto()
 	CHANGED_SETTINGS = enum.auto()
 	CONFIG_NOT_INSTALLED = enum.auto()
+	CONTAINER_CLIENT_ALREADY_RUNNING = enum.auto()
 	CONTAINER_ERROR = enum.auto()
 	CONTEXT_NOT_FOUND = enum.auto()
-	DOCKER_ALREADY_RUNNING = enum.auto()
+	CORRUPTED_ENGINE_SOURCE = enum.auto()
 	EMPTY_COMMAND = enum.auto()
 	ENGINE_BUILD_NOT_FOUND = enum.auto()
 	ENGINE_INSTALL_NOT_FOUND = enum.auto()
@@ -75,6 +76,7 @@ class Messages(AutoEnum):
 	INVALID_CHANGES = enum.auto()
 	INVALID_CURRENT_USER = enum.auto()
 	INVALID_GPU = enum.auto()
+	INVALID_IMAGE_IN_NO_CONTAINERS_MODE = enum.auto()
 	INVALID_INSTALL_OPTIONS_REMOVE = enum.auto()
 	INVALID_LFS = enum.auto()
 	INVALID_LOCAL_BRANCH = enum.auto()
@@ -91,19 +93,25 @@ class Messages(AutoEnum):
 	INVALID_TARGET = enum.auto()
 	INVALID_USER_NAMESPACE = enum.auto()
 	INVALID_VERSION = enum.auto()
+	INVALID_VOLUME_DIRECTORY = enum.auto()
+	INVALID_VOLUME_TYPE = enum.auto()
 	INSERT_VERSION_NAME = enum.auto()
 	INSTALL_QUESTION = enum.auto()
 	IS_DEVELOPMENT_MODE = enum.auto()
+	IS_NO_CONTAINERS_MODE = enum.auto()
 	LFS_NOT_FOUND = enum.auto()
 	MISSING_BINARY = enum.auto()
 	MISSING_BOUND_VERSION = enum.auto()
+	MISSING_CMAKE = enum.auto()
 	MISSING_CONFIG = enum.auto()
 	MISSING_DISPLAY = enum.auto()
 	MISSING_DOCKER = enum.auto()
 	MISSING_GPU = enum.auto()
 	MISSING_INSTALL_AND_CONFIG = enum.auto()
 	MISSING_INSTALL = enum.auto()
+	MISSING_MODULE = enum.auto()
 	MISSING_PROJECT = enum.auto()
+	MISSING_PYTHON = enum.auto()
 	MISSING_VERSION = enum.auto()
 	NO_UPDATES = enum.auto()
 	NO_UPDATES_IF_DETACHED = enum.auto()
@@ -117,6 +125,7 @@ class Messages(AutoEnum):
 	SETTINGS_NOT_FOUND = enum.auto()
 	SOURCE_ALREADY_EXISTS = enum.auto()
 	SOURCE_NOT_FOUND = enum.auto()
+	START_DOWNLOAD_ENGINE_SOURCE = enum.auto()
 	UNCOMPLETED_BUILD_PROJECT = enum.auto()
 	UNCOMPLETED_IMAGE = enum.auto()
 	UNCOMPLETED_INIT_ENGINE = enum.auto()
@@ -126,8 +135,10 @@ class Messages(AutoEnum):
 	UNCOMPLETED_MISSING_INSTALL = enum.auto()
 	UNCOMPLETED_REFRESH = enum.auto()
 	UNCOMPLETED_REGISTRATION = enum.auto()
+	UNCOMPLETED_SOLUTION_GENERATION = enum.auto()
 	UNINSTALL_COMPLETED = enum.auto()
 	UNREACHABLE_X11_DISPLAY = enum.auto()
+	UNSUPPORTED_CONTAINERS_AND_NO_CLIENT = enum.auto()
 	UPDATES_AVAILABLE = enum.auto()
 	UPGRADE_COMPLETED = enum.auto()
 	UPGRADE_COMPLETED_SKIP_REBUILD = enum.auto()
@@ -216,12 +227,14 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Following project settings are changed:"
 	elif message_id == Messages.CONFIG_NOT_INSTALLED:
 		message_text = "No config '{}' was found for version '{}'"
+	elif message_id == Messages.CONTAINER_CLIENT_ALREADY_RUNNING:
+		message_text = "Another container client is already running, it will be re-used"
 	elif message_id == Messages.CONTAINER_ERROR:
 		message_text = "Container from image '{}' failed with error code: {}"
 	elif message_id == Messages.CONTEXT_NOT_FOUND:
 		message_text = "Unable to retrieve the building context at: {}"
-	elif message_id == Messages.DOCKER_ALREADY_RUNNING:
-		message_text = "Another Docker client is already running, it will be re-used"
+	elif message_id == Messages.CORRUPTED_ENGINE_SOURCE:
+		message_text = "One or more required files are missing in the engine source directory ({}). Please use '" + print_command(CliCommands.UNINSTALL) + " " + print_option(LongOptions.FORCE) + "' to remove it and '" + print_command(CliCommands.INSTALL) + "' to download it again"
 	elif message_id == Messages.EMPTY_COMMAND:
 		message_text = "No command was provided. Please use '" + print_command(CliCommands.HELP) + "' to see all available commands"
 	elif message_id == Messages.ENGINE_BUILD_NOT_FOUND:
@@ -284,6 +297,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Unable to calculate the current user"
 	elif message_id == Messages.INVALID_GPU:
 		message_text = "Unable to activate hardware acceleration since current GPU drivers ({}) aren't supported. Falling back to software rendering..."
+	elif message_id == Messages.INVALID_IMAGE_IN_NO_CONTAINERS_MODE:
+		message_text = "Only image names are accepted when active mode is active. Received: {}"
 	elif message_id == Messages.INVALID_INSTALL_OPTIONS_REMOVE:
 		message_text = "Invalid options combination. At least one option between '" + print_option(LongOptions.REMOVE_BUILD) + "' and '" + print_option(LongOptions.REMOVE_INSTALL) + "' must be set to 'false', or the option '" + print_option(LongOptions.SAVE_IMAGES) + "' must be set to 'true'"
 	elif message_id == Messages.INVALID_LFS:
@@ -316,14 +331,22 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Unable to calculate the user namespace for the container user"
 	elif message_id == Messages.INVALID_VERSION:
 		message_text = "Invalid version name: {}. Only following characters are allowed: alphanumerics, dots, hyphens and underscores"
+	elif message_id == Messages.INVALID_VOLUME_DIRECTORY:
+		message_text = "A directory was expected for volume '{}' at: {}"
+	elif message_id == Messages.INVALID_VOLUME_TYPE:
+		message_text = "Unable to determine the type of a volume: {}"
 	elif message_id == Messages.IS_DEVELOPMENT_MODE:
 		message_text = "[Running in DEV_MODE]"
+	elif message_id == Messages.IS_NO_CONTAINERS_MODE:
+		message_text = "[Running in NO_CONTAINERS_MODE]"
 	elif message_id == Messages.LFS_NOT_FOUND:
 		message_text = "Unable to read LFS URL to setup '{}' remote"
 	elif message_id == Messages.MISSING_BINARY:
 		message_text = "No binary exists at: {}. Do you have built the project with: config='{}' binary='{}'?"
 	elif message_id == Messages.MISSING_BOUND_VERSION:
 		message_text = "No version '{}' was found. Please use '" + print_command(CliCommands.INSTALL) + "' to download it or '" + print_command(CliCommands.SETTINGS) + "' to clear it from project settings"
+	elif message_id == Messages.MISSING_CMAKE:
+		message_text = "Unable to find 'cmake'.\nPlease refer to CMake official documentation for installation instructions:\nhttps://cmake.org/install"
 	elif message_id == Messages.MISSING_CONFIG:
 		message_text = "No engine config was provided"
 	elif message_id == Messages.MISSING_DISPLAY:
@@ -336,8 +359,12 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "The engine for this project is not installed, but it is available at: {}"
 	elif message_id == Messages.MISSING_INSTALL_AND_CONFIG:
 		message_text = "Unable to find an engine installation for version '{}' and config '{}'. Please use '" + print_command(CliCommands.INSTALL) + "' to add it and try again"
+	elif message_id == Messages.MISSING_MODULE:
+		message_text = "Unable to find '{0}' module.\nPlease add it to your Python installation using:\npython -m pip install {0}"
 	elif message_id == Messages.MISSING_PROJECT:
 		message_text = "Project cannot be empty"
+	elif message_id == Messages.MISSING_PYTHON:
+		message_text = "Unable to find a valid Python 3 installation"
 	elif message_id == Messages.MISSING_VERSION:
 		message_text = "No version '{}' was found. Please use '" + print_command(CliCommands.INSTALL) + "' to download it and try again"
 	elif message_id == Messages.NO_UPDATES:
@@ -364,8 +391,12 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Source code was already cloned"
 	elif message_id == Messages.SOURCE_NOT_FOUND:
 		message_text = "No source repository was found"
+	elif message_id == Messages.START_DOWNLOAD_ENGINE_SOURCE:
+		message_text = "Downloading the engine source code from '{}'. Please wait..."		
 	elif message_id == Messages.UNCOMPLETED_BUILD_PROJECT:
 		message_text = "An unexpected error could be occurred while building the project"
+	elif message_id == Messages.UNCOMPLETED_SOLUTION_GENERATION:
+		message_text = "An error occurred while generating required files to start the building process"
 	elif message_id == Messages.UNCOMPLETED_INIT_ENGINE:
 		message_text = "An unexpected error could be occurred while downloading the engine source code"
 	elif message_id == Messages.UNCOMPLETED_INIT_PROJECT:
@@ -384,6 +415,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Operation completed! Version '{}' has been removed"
 	elif message_id == Messages.UNREACHABLE_X11_DISPLAY:
 		message_text = "Unable to connect to display :{}. Your xhost may be blocking connections from the container user.\n\nPlease use the following command to enable it:\nxhost +SI:localuser:#{}"
+	elif message_id == Messages.UNSUPPORTED_CONTAINERS_AND_NO_CLIENT:
+		message_text = "No action can be performed on containers when they are disabled"
 	elif message_id == Messages.UPDATES_AVAILABLE:
 		message_text = "There are {} updates available. Please use '" + print_command(CliCommands.UPGRADE) + "' to update your local installation"
 	elif message_id == Messages.UPGRADE_COMPLETED:

@@ -19,8 +19,13 @@ from .utils.filesystem import *
 from .utils.input_output import *
 from .utils.serialization import *
 from .utils.subfunctions import *
-import pygit2
 import re
+
+try:
+	import pygit2
+
+except ModuleNotFoundError as error:
+	throw_error(Messages.MISSING_MODULE, error.name)
 
 
 # --- TYPES ---
@@ -67,6 +72,11 @@ def clone_repository(url, reference):
 		branch = reference
 		commit_hash = None
 
+	for stage_dir in [ O3DE_ENGINE_BUILD_DIR, O3DE_ENGINE_INSTALL_DIR ]:
+		if stage_dir.is_dir() and is_directory_empty(stage_dir):
+			stage_dir.rmdir()
+
+	print_msg(Level.INFO, Messages.START_DOWNLOAD_ENGINE_SOURCE, url)
 	repository = pygit2.clone_repository(url, O3DE_ENGINE_SOURCE_DIR, checkout_branch = branch)
 
 	if commit_hash is not None:
@@ -138,6 +148,9 @@ def merge_branch():
 def main():
 	if DEVELOPMENT_MODE:
 		print_msg(Level.WARNING, Messages.IS_DEVELOPMENT_MODE)
+
+		if not RUN_CONTAINERS:
+			print_msg(Level.WARNING, Messages.IS_NO_CONTAINERS_MODE)
 
 	if len(sys.argv) < 2:
 		throw_error(Messages.EMPTY_COMMAND)

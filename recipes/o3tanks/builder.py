@@ -26,18 +26,17 @@ import subprocess
 # -- SUBFUNCTIONS ---
 
 def generate_configurations(source_dir, build_dir):
-	result = subprocess.run([
-		"cmake",
-		"-B", build_dir,
-		"-S", source_dir,
+	result = execute_cmake([
+		"-B", str(build_dir),
+		"-S", str(source_dir),
 		"-G", "Ninja Multi-Config",
 		"-DCMAKE_C_COMPILER=clang-6.0",
 		"-DCMAKE_CXX_COMPILER=clang++-6.0",
 		"-DLY_UNITY_BUILD=ON",
-		"-DLY_3RDPARTY_PATH=" + str(O3DE_PACKAGES_DIR)
+		"-DLY_3RDPARTY_PATH={}".format(O3DE_PACKAGES_DIR)
 	])
 
-	return result.returncode
+	return (result is not None and result.returncode == 0)
 
 
 def get_setting_key(setting_section, setting_name):
@@ -56,15 +55,29 @@ def get_setting_key(setting_section, setting_name):
 	return setting_key
 
 
+def execute_cmake(arguments):
+	cmake_file = "cmake"
+
+	try:
+		result = subprocess.run([ cmake_file ] + arguments)
+
+	except FileNotFoundError as error:
+		if error.filename == cmake_file:
+			throw_error(Messages.MISSING_CMAKE)
+		else:
+			raise error
+
+	return result
+
+
 # --- FUNCTIONS (ENGINE) ---
 
 def build_engine(engine_config, binaries):
 	if not O3DE_ENGINE_BUILD_DIR.exists() or is_directory_empty(O3DE_ENGINE_BUILD_DIR):
 		generate_engine_configurations()
 
-	result = subprocess.run([
-		"cmake",
-		"--build", O3DE_ENGINE_BUILD_DIR,
+	result = execute_cmake([
+		"--build", str(O3DE_ENGINE_BUILD_DIR),
 		"--config", engine_config.value,
 		"--target", ', '.join(binaries) if (binaries is not None) else "install"
 	])
@@ -143,12 +156,23 @@ def clean_engine(engine_config, remove_build, remove_install):
 
 
 def generate_engine_configurations():
-	result = subprocess.run([ O3DE_ENGINE_SOURCE_DIR / "python" / "get_python.sh" ])
+	get_python_file = "get_python.sh"
+
+	try:
+		result = subprocess.run([ O3DE_ENGINE_SOURCE_DIR / "python" / get_python_file ])
+
+	except FileNotFoundError as error:
+		if error.filename == get_python_file:
+			throw_error(Messages.CORRUPTED_ENGINE_SOURCE, error.filename)
+		else:
+			raise error
+
 	if result.returncode != 0:
 		throw_error(Messages.UNCOMPLETED_REGISTRATION, error.returncode, "\n{}\n{}".format(error.stdout, error.stderr))
 
-	exit_code = generate_configurations(O3DE_ENGINE_SOURCE_DIR, O3DE_ENGINE_BUILD_DIR)
-	return exit_code
+	generated = generate_configurations(O3DE_ENGINE_SOURCE_DIR, O3DE_ENGINE_BUILD_DIR)
+	if not generated:
+		throw_error(Messages.UNCOMPLETED_SOLUTION_GENERATION)
 
 
 # --- FUNCTIONS (PROJECT) ---
@@ -178,17 +202,24 @@ def build_project(config, binary):
 
 	try:
 		subprocess.run([ O3DE_CLI_FILE, "register", "--this-engine" ], stdout = subprocess.DEVNULL, check = True)
-		subprocess.run([ O3DE_CLI_FILE, "register", "--project-path", O3DE_PROJECT_SOURCE_DIR ], stdout = subprocess.DEVNULL, check = True) 
+		subprocess.run([ O3DE_CLI_FILE, "register", "--project-path", str(O3DE_PROJECT_SOURCE_DIR) ], stdout = subprocess.DEVNULL, check = True)
+
+	except FileNotFoundError as error:
+		if error.filename == O3DE_CLI_FILE.name:
+			throw_error(Messages.CORRUPTED_ENGINE_SOURCE, error.filename)
+		else:
+			raise error
 
 	except subprocess.CalledProcessError as error:
 		throw_error(Messages.UNCOMPLETED_REGISTRATION, error.returncode, "\n{}\n{}".format(error.stdout, error.stderr))
 
 	if not O3DE_PROJECT_BUILD_DIR.is_dir() or is_directory_empty(O3DE_PROJECT_BUILD_DIR):
-		generate_configurations(O3DE_PROJECT_SOURCE_DIR, O3DE_PROJECT_BUILD_DIR)
+		generated = generate_configurations(O3DE_PROJECT_SOURCE_DIR, O3DE_PROJECT_BUILD_DIR)
+		if not generated:
+			throw_error(Messages.UNCOMPLETED_SOLUTION_GENERATION)
 
-	result = subprocess.run([
-		"cmake",
-		"--build", O3DE_PROJECT_BUILD_DIR,
+	result = execute_cmake([
+		"--build", str(O3DE_PROJECT_BUILD_DIR),
 		"--config", config.value,
 		"--target", target_name
 	])
@@ -228,14 +259,19 @@ def clean_project(config, force):
 	else:
 		try:
 			subprocess.run([ O3DE_CLI_FILE, "register", "--this-engine" ], stdout = subprocess.DEVNULL, check = True)
-			subprocess.run([ O3DE_CLI_FILE, "register", "--project-path", O3DE_PROJECT_SOURCE_DIR ], stdout = subprocess.DEVNULL, check = True)	
+			subprocess.run([ O3DE_CLI_FILE, "register", "--project-path", str(O3DE_PROJECT_SOURCE_DIR) ], stdout = subprocess.DEVNULL, check = True)
+
+		except FileNotFoundError as error:
+			if error.filename == O3DE_CLI_FILE.name:
+				throw_error(Messages.CORRUPTED_ENGINE_SOURCE, error.filename)
+			else:
+				raise error
 
 		except subprocess.CalledProcessError as error:
 			throw_error(Messages.UNCOMPLETED_REGISTRATION, error.returncode, "\n{}\n{}".format(error.stdout, error.stderr))
 
-		result = subprocess.run([
-			"cmake",
-			"--build", O3DE_PROJECT_BUILD_DIR,
+		result = execute_cmake([
+			"--build", str(O3DE_PROJECT_BUILD_DIR),
 			"--config", config.value,
 			"--target", "clean"
 		])
@@ -247,11 +283,18 @@ def generate_project_configurations(project_name, engine_version):
 	if not is_directory_empty(O3DE_PROJECT_SOURCE_DIR):
 		throw_error(Messages.PROJECT_DIR_NOT_EMPTY)
 
-	result = subprocess.run([
-			O3DE_CLI_FILE, "create-project",
-			"--project-name", project_name,
-			"--project-path", O3DE_PROJECT_SOURCE_DIR
-		])
+	try:
+		result = subprocess.run([
+				O3DE_CLI_FILE, "create-project",
+				"--project-name", project_name,
+				"--project-path", O3DE_PROJECT_SOURCE_DIR
+			])
+
+	except FileNotFoundError as error:
+		if error.filename == O3DE_CLI_FILE.name:
+			throw_error(Messages.CORRUPTED_ENGINE_SOURCE, error.filename)
+		else:
+			raise error
 
 	if result.returncode != 0:
 		throw_error(Messages.UNCOMPLETED_INIT_PROJECT)
@@ -357,6 +400,9 @@ def write_project_setting(setting_section, setting_name, setting_value, show_pre
 def main():
 	if DEVELOPMENT_MODE:
 		print_msg(Level.WARNING, Messages.IS_DEVELOPMENT_MODE)
+
+		if not RUN_CONTAINERS:
+			print_msg(Level.WARNING, Messages.IS_NO_CONTAINERS_MODE)
 
 	if len(sys.argv) < 2:
 		throw_error(Messages.EMPTY_COMMAND)

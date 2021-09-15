@@ -30,6 +30,12 @@ def register_project():
 		subprocess.run([ O3DE_CLI_FILE, "register", "--this-engine" ], stdout = subprocess.DEVNULL, check = True)
 		subprocess.run([ O3DE_CLI_FILE, "register", "--project-path", O3DE_PROJECT_SOURCE_DIR ], stdout = subprocess.DEVNULL, check = True)
 
+	except FileNotFoundError as error:
+		if error.filename == O3DE_CLI_FILE.name:
+			throw_error(Messages.CORRUPTED_ENGINE_SOURCE)
+		else:
+			raise error
+
 	except subprocess.CalledProcessError as error:
 		throw_error(Messages.UNCOMPLETED_REGISTRATION, error.returncode, "\n{}\n{}".format(error.stdout, error.stderr))
 
@@ -126,6 +132,9 @@ def run_project(binary, config):
 def main():
 	if DEVELOPMENT_MODE:
 		print_msg(Level.WARNING, Messages.IS_DEVELOPMENT_MODE)
+
+		if not RUN_CONTAINERS:
+			print_msg(Level.WARNING, Messages.IS_NO_CONTAINERS_MODE)
 
 	if len(sys.argv) < 2:
 		throw_error(Messages.EMPTY_COMMAND)

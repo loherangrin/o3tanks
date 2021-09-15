@@ -27,22 +27,27 @@ import sys
 import textwrap
 
 
+# --- VARIABLES ---
+
+CONTAINER_CLIENT = None
+
+
 # --- SUB-FUNCTIONS ---
 
 def get_all_engine_versions():
-	volume_prefix = get_volume_name(Volumes.SOURCE)
+	volume_prefix = CONTAINER_CLIENT.get_volume_name(Volumes.SOURCE)
 	start_delimiter = len(volume_prefix)
 
-	generic_volume = get_volume_name(Volumes.SOURCE, 'a')
+	generic_volume = CONTAINER_CLIENT.get_volume_name(Volumes.SOURCE, 'a')
 	end_delimiter = len(generic_volume)
 
 	volume_prefix_length = start_delimiter + (end_delimiter - start_delimiter - 1)
 
-	source_volumes = get_volumes("^{}*".format(volume_prefix))
+	source_volumes = CONTAINER_CLIENT.list_volumes("^{}*".format(volume_prefix))
 
 	engine_versions = []
 	for source_volume in source_volumes:
-		engine_version = source_volume.name[volume_prefix_length:]
+		engine_version = source_volume[volume_prefix_length:]
 		engine_versions.append(engine_version)
 
 	return engine_versions
@@ -90,8 +95,8 @@ def has_configuration(config_dir):
 
 
 def is_engine_installed(engine_version):
-	source_volume = get_volume_name(Volumes.SOURCE, engine_version)
-	source_dir = get_volume_path(source_volume)
+	source_volume = CONTAINER_CLIENT.get_volume_name(Volumes.SOURCE, engine_version)
+	source_dir = CONTAINER_CLIENT.get_volume_path(source_volume)
 
 	return ((source_dir is not None) and (source_dir / ".git" ).is_dir())
 
@@ -118,8 +123,8 @@ def search_engine_by_repository(engine_repository):
 
 	engine_version = None
 	for candidate_version in engine_versions:
-		source_volume = get_volume_name(Volumes.SOURCE, candidate_version)
-		source_dir = get_volume_path(source_volume)
+		source_volume = CONTAINER_CLIENT.get_volume_name(Volumes.SOURCE, candidate_version)
+		source_dir = CONTAINER_CLIENT.get_volume_path(source_volume)
 
 		result_type, installed_engine_repository = get_engine_repository_from_source(source_dir)
 
@@ -159,8 +164,8 @@ def select_engine(project_dir):
 			return EngineResult(EngineResultType.MISSING, engine_url)
 
 	else:
-		source_volume = get_volume_name(Volumes.SOURCE, engine_version)
-		source_dir = get_volume_path(source_volume)
+		source_volume = CONTAINER_CLIENT.get_volume_name(Volumes.SOURCE, engine_version)
+		source_dir = CONTAINER_CLIENT.get_volume_path(source_volume)
 
 		if source_dir is None:
 			engine_version = search_engine_by_repository(engine_repository)
@@ -182,18 +187,18 @@ def select_engine(project_dir):
 
 
 def select_recommended_config(engine_version):
-	build_volume = get_volume_name(Volumes.BUILD, engine_version)
-	build_dir = get_volume_path(build_volume)
+	build_volume = CONTAINER_CLIENT.get_volume_name(Volumes.BUILD, engine_version)
+	build_dir = CONTAINER_CLIENT.get_volume_path(build_volume)
 	
-	install_volume = get_volume_name(Volumes.INSTALL, engine_version)
-	install_dir = get_volume_path(install_volume)
+	install_volume = CONTAINER_CLIENT.get_volume_name(Volumes.INSTALL, engine_version)
+	install_dir = CONTAINER_CLIENT.get_volume_path(install_volume)
 	
 	engine_config = None
 	for config in O3DE_Configs:
-		install_builder_image = get_image_name(Images.INSTALL_BUILDER, engine_version, config)
+		install_builder_image = CONTAINER_CLIENT.get_image_name(Images.INSTALL_BUILDER, engine_version, config)
 
 		if (
-			image_exists(install_builder_image) or 
+			CONTAINER_CLIENT.image_exists(install_builder_image) or 
 			(install_dir is not None and has_install_config(install_dir, config)) or
 			(build_dir is not None and has_build_config(build_dir, config))
 		):
@@ -207,7 +212,7 @@ def select_recommended_config(engine_version):
 def apply_updates():
 	resume_command = [ get_bin_name(), CliCommands.UPGRADE.value, Targets.SELF.value ]
 
-	if is_in_container():
+	if CONTAINER_CLIENT.is_in_container():
 		installation_dir = ROOT_DIR
 		mapping = { str(installation_dir): get_real_bin_file().parent }
 	else:
@@ -223,6 +228,15 @@ def apply_updates():
 	print_msg(Level.INFO, Messages.UPGRADE_COMPLETED)
 
 
+def check_container_client():
+	global CONTAINER_CLIENT
+	if CONTAINER_CLIENT is not None:
+		print_msg(Level.WARNING, Messages.CONTAINER_CLIENT_ALREADY_RUNNING)
+		return
+
+	CONTAINER_CLIENT = ContainerClient.open()
+
+
 def check_builder():
 	check_image(Images.BUILDER, "builder")
 
@@ -233,11 +247,11 @@ def check_updater():
 	check_image(Images.UPDATER, "updater")
 
 def check_image(image_id, build_stage):
-	image_name = get_image_name(image_id)
+	image_name = CONTAINER_CLIENT.get_image_name(image_id)
 
-	if not image_exists(image_name):
+	if not CONTAINER_CLIENT.image_exists(image_name):
 		recipe = "Dockerfile.linux"
-		if is_in_container():
+		if CONTAINER_CLIENT.is_in_container():
 			if DEVELOPMENT_MODE:
 				archive_file = None
 				context_dir = ROOT_DIR.parent / "o3tanks_recipes"
@@ -256,11 +270,11 @@ def check_image(image_id, build_stage):
 			build_arguments = {}
 
 		if archive_file is not None:
-			build_image_from_archive(archive_file, image_name, recipe, build_stage, buil_arguments)
+			CONTAINER_CLIENT.build_image_from_archive(archive_file, image_name, recipe, build_stage, build_arguments)
 		else:
-			build_image_from_directory(context_dir, image_name, recipe, build_stage, build_arguments)
+			CONTAINER_CLIENT.build_image_from_directory(context_dir, image_name, recipe, build_stage, build_arguments)
 
-		if not image_exists(image_name):
+		if not CONTAINER_CLIENT.image_exists(image_name):
 			throw_error(Messages.ERROR_BUILD_IMAGE, image_name)
 
 
@@ -272,11 +286,11 @@ def check_ownership(paths, instructions, resume_command, mapping = None):
 	elif len(paths) == 0:
 		return
 
-	current_user = get_current_user()
+	current_user = CONTAINER_CLIENT.get_current_user()
 	if current_user is None:
 		throw_error(Messages.INVALID_CURRENT_USER)
 
-	container_user = get_container_user()
+	container_user = CONTAINER_CLIENT.get_container_user()
 	if container_user is None:
 		throw_error(Messages.INVALID_CONTAINER_USER)
 
@@ -323,7 +337,7 @@ def check_ownership(paths, instructions, resume_command, mapping = None):
 					except ValueError:
 						continue						
 
-			real_container_user = get_container_user(False)
+			real_container_user = CONTAINER_CLIENT.get_container_user(False)
 			print_msg(Level.INFO, "sudo chown --recursive {}:{} {}".format(real_container_user.uid, real_container_user.gid, real_path))
 		
 		print_msg(Level.INFO, '')
@@ -331,6 +345,13 @@ def check_ownership(paths, instructions, resume_command, mapping = None):
 		print_msg(Level.INFO, resume_command)
 
 		exit(1)
+
+
+def close_container_client():
+	global CONTAINER_CLIENT
+	if CONTAINER_CLIENT is not None:
+		CONTAINER_CLIENT.close()
+		CONTAINER_CLIENT = None
 
 
 def print_version_info():
@@ -344,35 +365,43 @@ def print_version_info():
 
 
 def run_builder(engine_version, engine_config, project_dir, *command):
-	install_image = get_image_name(Images.INSTALL_BUILDER, engine_version, engine_config) if engine_config is not None else None
+	install_image = CONTAINER_CLIENT.get_image_name(Images.INSTALL_BUILDER, engine_version, engine_config) if engine_config is not None else None
 	
-	mounts = []
-	if (install_image is not None) and image_exists(install_image):
+	binds = {}
+	volumes = {}
+
+	if (install_image is not None) and CONTAINER_CLIENT.image_exists(install_image):
 		builder_image = install_image
 	else:
-		builder_image = get_image_name(Images.BUILDER)
+		builder_image = CONTAINER_CLIENT.get_image_name(Images.BUILDER)
 
 		if engine_version is not None:
-			source_volume = get_volume_name(Volumes.SOURCE, engine_version)
-			mounts.append(docker.types.Mount(type = "volume", source = source_volume, target = str(O3DE_ENGINE_SOURCE_DIR)))
+			source_volume = CONTAINER_CLIENT.get_volume_name(Volumes.SOURCE, engine_version)
+			volumes[source_volume] = str(O3DE_ENGINE_SOURCE_DIR)
 
-			packages_volume = get_volume_name(Volumes.PACKAGES)
-			mounts.append(docker.types.Mount(type = "volume", source = packages_volume, target = str(O3DE_PACKAGES_DIR)))
+			packages_volume = CONTAINER_CLIENT.get_volume_name(Volumes.PACKAGES)
+			volumes[packages_volume] = str(O3DE_PACKAGES_DIR)
 			
-			build_volume = get_volume_name(Volumes.BUILD, engine_version)
-			mounts.append(docker.types.Mount(type = "volume", source = build_volume, target = str(O3DE_ENGINE_BUILD_DIR)))
+			build_volume = CONTAINER_CLIENT.get_volume_name(Volumes.BUILD, engine_version)
+			volumes[build_volume] = str(O3DE_ENGINE_BUILD_DIR)
 			
-			install_volume = get_volume_name(Volumes.INSTALL, engine_version)
-			mounts.append(docker.types.Mount(type = "volume", source = install_volume, target = str(O3DE_ENGINE_INSTALL_DIR)))
+			install_volume = CONTAINER_CLIENT.get_volume_name(Volumes.INSTALL, engine_version)
+			volumes[install_volume] = str(O3DE_ENGINE_INSTALL_DIR)
 
 	if project_dir is not None and project_dir.is_dir():
-		mounts.append(docker.types.Mount(type = "bind", source = str(get_real_project_dir() if is_in_container() else project_dir), target = str(O3DE_PROJECT_SOURCE_DIR)))
+		binds[str(get_real_project_dir() if CONTAINER_CLIENT.is_in_container() else project_dir)] = str(O3DE_PROJECT_SOURCE_DIR)
 
 	if DEVELOPMENT_MODE:
 		scripts_dir = get_real_bin_file().parent / SCRIPTS_PATH
-		mounts.append(docker.types.Mount(type = "bind", source = str(scripts_dir) , target = str(ROOT_DIR)))
+		binds[str(scripts_dir)] = str(ROOT_DIR)
 
-	completed = run_foreground_container(builder_image, list(command), interactive = is_tty(), mounts = mounts)
+	completed = CONTAINER_CLIENT.run_foreground_container(
+		builder_image,
+		list(command),
+		interactive = is_tty(),
+		binds = binds,
+		volumes = volumes
+	)
 	
 	return completed
 
@@ -381,36 +410,38 @@ def run_runner(engine_version, engine_config, project_dir, headless, *command):
 	if engine_config is None:
 		throw_error(Messages.MISSING_CONFIG)
 
-	install_image = get_image_name(Images.INSTALL_RUNNER, engine_version, engine_config)
+	install_image = CONTAINER_CLIENT.get_image_name(Images.INSTALL_RUNNER, engine_version, engine_config)
 
-	mounts = []
-	if image_exists(install_image):
-		runner_image = install_image
+	binds = {}
+	volumes = {}
+
+	if CONTAINER_CLIENT.image_exists(install_image):
+		runner_image = CONTAINER_CLIENT.install_image
 	else:
-		runner_image = get_image_name(Images.RUNNER)
+		runner_image = CONTAINER_CLIENT.get_image_name(Images.RUNNER)
 
-		build_volume = get_volume_name(Volumes.BUILD, engine_version)
-		install_volume = get_volume_name(Volumes.INSTALL, engine_version)
-		source_volume = get_volume_name(Volumes.SOURCE, engine_version)
+		build_volume = CONTAINER_CLIENT.get_volume_name(Volumes.BUILD, engine_version)
+		install_volume = CONTAINER_CLIENT.get_volume_name(Volumes.INSTALL, engine_version)
+		source_volume = CONTAINER_CLIENT.get_volume_name(Volumes.SOURCE, engine_version)
 
-		if volume_exists(install_volume):
-			install_dir = get_volume_path(install_volume)
+		if CONTAINER_CLIENT.volume_exists(install_volume):
+			install_dir = CONTAINER_CLIENT.get_volume_path(install_volume)
 
 			if has_install_config(install_dir, engine_config):				
-				mounts.append(docker.types.Mount(type = "volume", source = install_volume, target = str(O3DE_ENGINE_INSTALL_DIR)))
+				volumes[install_volume] = str(O3DE_ENGINE_INSTALL_DIR)
 
-		if (len(mounts) == 0) and volume_exists(build_volume) and volume_exists(source_volume):
-			build_dir = get_volume_path(build_volume)
+		if (len(volumes) == 0) and CONTAINER_CLIENT.volume_exists(build_volume) and CONTAINER_CLIENT.volume_exists(source_volume):
+			build_dir = CONTAINER_CLIENT.get_volume_path(build_volume)
 
 			if has_build_config(build_dir, engine_config):
-				mounts.append(docker.types.Mount(type = "volume", source = source_volume, target = str(O3DE_ENGINE_SOURCE_DIR)))
-				mounts.append(docker.types.Mount(type = "volume", source = build_volume, target = str(O3DE_ENGINE_BUILD_DIR)))
+				volumes[source_volume] = str(O3DE_ENGINE_SOURCE_DIR)
+				volumes[build_volume] = str(O3DE_ENGINE_BUILD_DIR)
 
-		if len(mounts) == 0:
+		if len(volumes) == 0:
 			throw_error(Messages.MISSING_INSTALL_AND_CONFIG, engine_version, engine_config.value)
 
 	if project_dir is not None and project_dir.is_dir():
-		mounts.append(docker.types.Mount(type = "bind", source = str(get_real_project_dir() if is_in_container() else project_dir), target = str(O3DE_PROJECT_SOURCE_DIR)))
+		binds[str(get_real_project_dir() if CONTAINER_CLIENT.is_in_container() else project_dir)] = str(O3DE_PROJECT_SOURCE_DIR)
 	else:
 		throw_error(Messages.MISSING_PROJECT)
 
@@ -423,38 +454,44 @@ def run_runner(engine_version, engine_config, project_dir, headless, *command):
 
 	if DEVELOPMENT_MODE:
 		scripts_dir = get_real_bin_file().parent / SCRIPTS_PATH
-		mounts.append(docker.types.Mount(type = "bind", source = str(scripts_dir) , target = str(ROOT_DIR)))
+		binds[str(scripts_dir)] = str(ROOT_DIR)
 
-	completed =	run_foreground_container(
+	completed =	CONTAINER_CLIENT.run_foreground_container(
 		runner_image,
 		list(command),
 		interactive = is_tty(),
 		display = has_display,
 		gpu = has_gpu,
-		mounts = mounts
+		binds = binds,
+		volumes = volumes
 	)
 
 	return completed
 
 
 def run_updater(engine_version, *command):
-	updater_image = get_image_name(Images.UPDATER)
+	updater_image = CONTAINER_CLIENT.get_image_name(Images.UPDATER)
+
+	binds = {}
+	volumes = {}
 
 	if engine_version is not None:
-		mount_from = get_volume_name(Volumes.SOURCE, engine_version)
-		mount_type = "volume"
-
+		source_volume = CONTAINER_CLIENT.get_volume_name(Volumes.SOURCE, engine_version)
+		volumes[source_volume] = str(O3DE_ENGINE_SOURCE_DIR)
 	else:
-		mount_from = str(get_real_bin_file().parent)
-		mount_type = "bind"
-
-	mounts = [ docker.types.Mount(type = mount_type, source = mount_from, target = str(O3DE_ENGINE_SOURCE_DIR)) ]
+		binds[str(get_real_bin_file().parent)] = str(O3DE_ENGINE_SOURCE_DIR)
 
 	if DEVELOPMENT_MODE:
 		scripts_dir = get_real_bin_file().parent / SCRIPTS_PATH
-		mounts.append(docker.types.Mount(type = "bind", source = str(scripts_dir) , target = str(ROOT_DIR)))
+		binds[str(scripts_dir)] = str(ROOT_DIR)
 
-	completed = run_foreground_container(updater_image, list(command), interactive = is_tty(), mounts = mounts)
+	completed = CONTAINER_CLIENT.run_foreground_container(
+		updater_image,
+		list(command),
+		interactive = is_tty(),
+		binds = binds,
+		volumes = volumes
+	)
 
 	return completed
 
@@ -462,7 +499,7 @@ def run_updater(engine_version, *command):
 def search_updates():
 	resume_command = [ get_bin_name(), CliCommands.REFRESH.value, Targets.SELF.value ]
 
-	if is_in_container():
+	if CONTAINER_CLIENT.is_in_container():
 		installation_dir = ROOT_DIR
 		mapping = { str(installation_dir): get_real_bin_file().parent }
 	else:
@@ -480,31 +517,31 @@ def apply_engine_updates(engine_version, rebuild):
 	if not is_engine_installed(engine_version):
 		throw_error(Messages.MISSING_VERSION, engine_version)
 
-	source_volume = get_volume_name(Volumes.SOURCE, engine_version)
-	source_dir = get_volume_path(source_volume)
+	source_volume = CONTAINER_CLIENT.get_volume_name(Volumes.SOURCE, engine_version)
+	source_dir = CONTAINER_CLIENT.get_volume_path(source_volume)
 	if source_dir is None:
 		throw_error(Messages.ENGINE_SOURCE_NOT_FOUND, source_volume)
 
-	build_volume = get_volume_name(Volumes.BUILD, engine_version)
-	build_dir = get_volume_path(build_volume)
+	build_volume = CONTAINER_CLIENT.get_volume_name(Volumes.BUILD, engine_version)
+	build_dir = CONTAINER_CLIENT.get_volume_path(build_volume)
 	if build_dir is None:
 		throw_error(Messages.ENGINE_BUILD_NOT_FOUND, build_volume)
 
-	install_volume = get_volume_name(Volumes.INSTALL, engine_version)
-	install_dir = get_volume_path(install_volume)
+	install_volume = CONTAINER_CLIENT.get_volume_name(Volumes.INSTALL, engine_version)
+	install_dir = CONTAINER_CLIENT.get_volume_path(install_volume)
 	if install_dir is None:
 		throw_error(Messages.ENGINE_INSTALL_NOT_FOUND, install_volume)
 
 	installed_configs = []
 	for engine_config in O3DE_Configs:
-		install_builder_image = get_image_name(Images.INSTALL_BUILDER, engine_version, engine_config)
-		install_runner_image = get_image_name(Images.INSTALL_RUNNER, engine_version, engine_config)
+		install_builder_image = CONTAINER_CLIENT.get_image_name(Images.INSTALL_BUILDER, engine_version, engine_config)
+		install_runner_image = CONTAINER_CLIENT.get_image_name(Images.INSTALL_RUNNER, engine_version, engine_config)
 
 		if (
 			has_build_config(build_dir, engine_config) or
 		   	has_install_config(install_dir, engine_config) or
-		   	image_exists(install_builder_image) or
-		   	image_exists(install_runner_image)
+		   	CONTAINER_CLIENT.image_exists(install_builder_image) or
+		   	CONTAINER_CLIENT.image_exists(install_runner_image)
 		):
 			installed_configs.append(engine_config)
 
@@ -522,8 +559,8 @@ def apply_engine_updates(engine_version, rebuild):
 	if result_type is not RepositoryResultType.OK:
 		throw_error(Messages.BINDING_INVALID_REPOSITORY)
 
-	if is_in_container():
-		mapping = { "/var/lib/docker/volumes": get_real_volumes_dir() } if is_in_container() else None
+	if CONTAINER_CLIENT.is_in_container():
+		mapping = { "/var/lib/docker/volumes": get_real_volumes_dir() } if CONTAINER_CLIENT.is_in_container() else None
 		for mapping_from, mapping_to in mapping.items():
 			source_path = source_dir.relative_to(mapping_from)
 			source_dir = mapping_to / source_path
@@ -538,18 +575,18 @@ def apply_engine_updates(engine_version, rebuild):
 	print_msg(Level.INFO, '')
 	print_msg(Level.INFO, Messages.RUN_RESUME_COMMAND)
 
-	remove_build = is_volume_empty(build_volume)
-	remove_install = is_volume_empty(install_volume)
+	remove_build = CONTAINER_CLIENT.is_volume_empty(build_volume)
+	remove_install = CONTAINER_CLIENT.is_volume_empty(install_volume)
 
 	for engine_config in O3DE_Configs:
-		install_builder_image = get_image_name(Images.INSTALL_BUILDER, engine_version, engine_config)
-		install_runner_image = get_image_name(Images.INSTALL_RUNNER, engine_version, engine_config)
+		install_builder_image = CONTAINER_CLIENT.get_image_name(Images.INSTALL_BUILDER, engine_version, engine_config)
+		install_runner_image = CONTAINER_CLIENT.get_image_name(Images.INSTALL_RUNNER, engine_version, engine_config)
 
-		if image_exists(install_builder_image) and image_exists(install_runner_image):
+		if CONTAINER_CLIENT.image_exists(install_builder_image) and CONTAINER_CLIENT.image_exists(install_runner_image):
 			save_images = True
-		elif image_exists(install_builder_image):
+		elif CONTAINER_CLIENT.image_exists(install_builder_image):
 			save_images = Images.BUILDER
-		elif image_exists(install_runner_image):
+		elif CONTAINER_CLIENT.image_exists(install_runner_image):
 			save_images = Images.RUNNER
 		else:
 			save_images = False
@@ -602,29 +639,29 @@ def install_engine(repository, engine_version, engine_config, force = False, rem
 
 	new_volumes = []
 
-	source_volume = get_volume_name(Volumes.SOURCE, engine_version)
-	if not volume_exists(source_volume):
+	source_volume = CONTAINER_CLIENT.get_volume_name(Volumes.SOURCE, engine_version)
+	if not CONTAINER_CLIENT.volume_exists(source_volume):
 		new_volumes.append(source_volume)
 
-	build_volume = get_volume_name(Volumes.BUILD, engine_version)
-	if not volume_exists(build_volume):
+	build_volume = CONTAINER_CLIENT.get_volume_name(Volumes.BUILD, engine_version)
+	if not CONTAINER_CLIENT.volume_exists(build_volume):
 		new_volumes.append(build_volume)
 
-	install_volume = get_volume_name(Volumes.INSTALL, engine_version)
-	if not volume_exists(install_volume):
+	install_volume = CONTAINER_CLIENT.get_volume_name(Volumes.INSTALL, engine_version)
+	if not CONTAINER_CLIENT.volume_exists(install_volume):
 		new_volumes.append(install_volume)
 
 	new_volume_dirs = []
 	if len(new_volumes) >  0:
 		for new_volume in new_volumes:
-			create_volume(new_volume)
+			CONTAINER_CLIENT.create_volume(new_volume)
 
-			new_dir = get_volume_path(new_volume)
+			new_dir = CONTAINER_CLIENT.get_volume_path(new_volume)
 			new_volume_dirs.append(new_dir)
 	
-	source_dir = get_volume_path(source_volume)
-	build_dir = get_volume_path(build_volume)
-	install_dir = get_volume_path(install_volume)
+	source_dir = CONTAINER_CLIENT.get_volume_path(source_volume)
+	build_dir = CONTAINER_CLIENT.get_volume_path(build_volume)
+	install_dir = CONTAINER_CLIENT.get_volume_path(install_volume)
 	
 	if force:
 		new_volume_dirs.append(source_dir)
@@ -659,7 +696,7 @@ def install_engine(repository, engine_version, engine_config, force = False, rem
 	resume_command.append(engine_version)
 	resume_command = ' '.join(resume_command)
 
-	mapping = { "/var/lib/docker/volumes": get_real_volumes_dir() } if is_in_container() else None
+	mapping = { "/var/lib/docker/volumes": get_real_volumes_dir() } if CONTAINER_CLIENT.is_in_container() else None
 
 	if len(new_volume_dirs) > 0:
 		instructions = Messages.CHANGE_OWNERSHIP_NEW_VOLUMES if len(new_volumes) > 0 else Messages.CHANGE_OWNERSHIP_EXISTING_VOLUMES
@@ -671,7 +708,7 @@ def install_engine(repository, engine_version, engine_config, force = False, rem
 		if not downloaded:
 			throw_error(Messages.UNCOMPLETED_INIT_ENGINE)
 
-		if is_in_container():
+		if CONTAINER_CLIENT.is_in_container():
 			for mapping_from, mapping_to in mapping.items():
 				source_path = source_dir.relative_to(mapping_from)
 				source_dir = mapping_to / source_path
@@ -687,7 +724,7 @@ def install_engine(repository, engine_version, engine_config, force = False, rem
 		exit(0)
 
 	if not force:
-		if not is_volume_empty(install_volume):
+		if not CONTAINER_CLIENT.is_volume_empty(install_volume):
 			throw_error(Messages.INSTALL_ALREADY_EXISTS, engine_version)		
 
 		if has_build_config(build_dir, engine_config):
@@ -710,11 +747,11 @@ def install_engine(repository, engine_version, engine_config, force = False, rem
 
 		run_builder(engine_version, None, None, BuilderCommands.CLEAN, Targets.ENGINE, config_limit, True, False)
 
-	install_builder_image = get_image_name(Images.INSTALL_BUILDER, engine_version, engine_config)
-	install_runner_image = get_image_name(Images.INSTALL_RUNNER, engine_version, engine_config)
+	install_builder_image = CONTAINER_CLIENT.get_image_name(Images.INSTALL_BUILDER, engine_version, engine_config)
+	install_runner_image = CONTAINER_CLIENT.get_image_name(Images.INSTALL_RUNNER, engine_version, engine_config)
 
 	if save_images:
-		if is_volume_empty(install_volume):
+		if CONTAINER_CLIENT.is_volume_empty(install_volume):
 			throw_error(Messages.UNCOMPLETED_INSTALL)
 
 		from_images = []
@@ -729,15 +766,15 @@ def install_engine(repository, engine_version, engine_config, force = False, rem
 			new_images.append(install_runner_image)		
 
 		for from_image_type, new_image_name in zip(from_images, new_images):
-			from_image = get_image_name(from_image_type)
+			from_image = CONTAINER_CLIENT.get_image_name(from_image_type)
 
 			new_container = None
 			try:
-				new_container = run_detached_container(from_image, wait = True, network_disabled = True)
+				new_container = CONTAINER_CLIENT.run_detached_container(from_image, wait = True, network_disabled = True)
 
 				config_dir = get_install_config_path(O3DE_ENGINE_INSTALL_DIR, engine_config)
 
-				executed = exec_in_container(new_container, [ "mkdir", "--parents", config_dir ])
+				executed = CONTAINER_CLIENT.exec_in_container(new_container, [ "mkdir", "--parents", config_dir ])
 				if not executed:
 					throw_error(Messages.ERROR_SAVE_IMAGE, new_image_name)
 
@@ -745,17 +782,17 @@ def install_engine(repository, engine_version, engine_config, force = False, rem
 					if content.is_dir() and (content.name == "bin"):
 						continue
 
-					copied = copy_to_container(new_container, content, O3DE_ENGINE_INSTALL_DIR)
+					copied = CONTAINER_CLIENT.copy_to_container(new_container, content, O3DE_ENGINE_INSTALL_DIR)
 					if not copied:
 						throw_error(Messages.ERROR_SAVE_IMAGE, new_image_name)
 
-				copied = copy_to_container(new_container, install_dir / config_dir.relative_to(O3DE_ENGINE_INSTALL_DIR), config_dir, content_only = True)
+				copied = CONTAINER_CLIENT.copy_to_container(new_container, install_dir / config_dir.relative_to(O3DE_ENGINE_INSTALL_DIR), config_dir, content_only = True)
 				if not copied:
 					throw_error(Messages.ERROR_SAVE_IMAGE, new_image_name)
 
-				packages_volume = get_volume_name(Volumes.PACKAGES)
-				packages_dir = get_volume_path(packages_volume)
-				copied = copy_to_container(new_container, packages_dir, O3DE_PACKAGES_DIR, content_only = True)
+				packages_volume = CONTAINER_CLIENT.get_volume_name(Volumes.PACKAGES)
+				packages_dir = CONTAINER_CLIENT.get_volume_path(packages_volume)
+				copied = CONTAINER_CLIENT.copy_to_container(new_container, packages_dir, O3DE_PACKAGES_DIR, content_only = True)
 				if not copied:
 					throw_error(Messages.ERROR_SAVE_IMAGE, new_image_name)
 
@@ -780,8 +817,8 @@ def install_engine(repository, engine_version, engine_config, force = False, rem
 					new_container.kill()
 
 	else:
-		remove_image(install_builder_image)
-		remove_image(install_runner_image)
+		CONTAINER_CLIENT.remove_image(install_builder_image)
+		CONTAINER_CLIENT.remove_image(install_runner_image)
 
 	if remove_install:
 		config_limit = None
@@ -838,25 +875,28 @@ def list_engines():
 
 	else:
 		for engine_version in engine_versions:
-			source_volume = get_volume_name(Volumes.SOURCE, engine_version)
-			source_dir = get_volume_path(source_volume)
+			source_volume = CONTAINER_CLIENT.get_volume_name(Volumes.SOURCE, engine_version)
+			source_dir = CONTAINER_CLIENT.get_volume_path(source_volume)
 			source_size = calculate_size(source_dir)
 
-			build_volume = get_volume_name(Volumes.BUILD, engine_version)
-			build_dir = get_volume_path(build_volume)
+			build_volume = CONTAINER_CLIENT.get_volume_name(Volumes.BUILD, engine_version)
+			build_dir = CONTAINER_CLIENT.get_volume_path(build_volume)
 			build_size = calculate_size(build_dir)
 
-			install_volume = get_volume_name(Volumes.INSTALL, engine_version)
-			install_dir = get_volume_path(install_volume)
+			install_volume = CONTAINER_CLIENT.get_volume_name(Volumes.INSTALL, engine_version)
+			install_dir = CONTAINER_CLIENT.get_volume_path(install_volume)
 			install_size = calculate_size(install_dir)
+
+			if not RUN_CONTAINERS:
+				source_size -= (build_size + install_size)
 
 			total_size = source_size + build_size + install_size
 
 			installed_configs = []
 			for config in O3DE_Configs:
-				install_image = get_image_name(Volumes.INSTALL, engine_version, config)
+				install_image = CONTAINER_CLIENT.get_image_name(Volumes.INSTALL, engine_version, config)
 
-				mark = 'x' if has_build_config(build_dir, config) or has_install_config(install_dir, config) or image_exists(install_image) else ''
+				mark = 'x' if has_build_config(build_dir, config) or has_install_config(install_dir, config) or CONTAINER_CLIENT.image_exists(install_image) else ''
 				installed_configs.append(mark)
 
 			print(engines_row.format(
@@ -868,8 +908,8 @@ def list_engines():
 				*installed_configs
 			))
 	
-	packages_volume = get_volume_name(Volumes.PACKAGES)
-	packages_dir = get_volume_path(packages_volume)
+	packages_volume = CONTAINER_CLIENT.get_volume_name(Volumes.PACKAGES)
+	packages_dir = CONTAINER_CLIENT.get_volume_path(packages_volume)
 	packages_size = calculate_size(packages_dir)
 
 	print('')
@@ -878,6 +918,11 @@ def list_engines():
 		print(packages_row.format("-", ""))
 	else:
 		print(packages_row.format("all", format_size(packages_size)))
+
+	if DATA_DIR is not None:
+		print('')
+		print("DATA LOCATION")
+		print(str(DATA_DIR))
 
 
 def search_engine_updates(engine_version):
@@ -888,28 +933,28 @@ def search_engine_updates(engine_version):
 
 
 def uninstall_engine(engine_version, engine_config = None, force = False):
-	source_volume = get_volume_name(Volumes.SOURCE, engine_version)
-	if not force and not volume_exists(source_volume):
+	source_volume = CONTAINER_CLIENT.get_volume_name(Volumes.SOURCE, engine_version)
+	if not force and not CONTAINER_CLIENT.volume_exists(source_volume):
 		throw_error(Messages.VERSION_NOT_INSTALLED, engine_version)
 	
-	build_volume = get_volume_name(Volumes.BUILD, engine_version)
-	install_volume = get_volume_name(Volumes.INSTALL, engine_version)
+	build_volume = CONTAINER_CLIENT.get_volume_name(Volumes.BUILD, engine_version)
+	install_volume = CONTAINER_CLIENT.get_volume_name(Volumes.INSTALL, engine_version)
 
 	if engine_config is None:
-		remove_volume(source_volume)
-		remove_volume(build_volume)
-		remove_volume(install_volume)
+		CONTAINER_CLIENT.remove_volume(source_volume)
+		CONTAINER_CLIENT.remove_volume(build_volume)
+		CONTAINER_CLIENT.remove_volume(install_volume)
 
 		for config in O3DE_Configs:
-			install_builder_image = get_image_name(Images.INSTALL_BUILDER, engine_version, config)
-			install_runner_image = get_image_name(Images.INSTALL_RUNNER, engine_version, config)
+			install_builder_image = CONTAINER_CLIENT.get_image_name(Images.INSTALL_BUILDER, engine_version, config)
+			install_runner_image = CONTAINER_CLIENT.get_image_name(Images.INSTALL_RUNNER, engine_version, config)
 
-			remove_image(install_builder_image)
-			remove_image(install_runner_image)
+			CONTAINER_CLIENT.remove_image(install_builder_image)
+			CONTAINER_CLIENT.remove_image(install_runner_image)
 
 	else:
-		build_dir = get_volume_path(build_volume)
-		install_dir = get_volume_path(install_volume)
+		build_dir = CONTAINER_CLIENT.get_volume_path(build_volume)
+		install_dir = CONTAINER_CLIENT.get_volume_path(install_volume)
 
 		no_config = True
 
@@ -917,14 +962,14 @@ def uninstall_engine(engine_version, engine_config = None, force = False):
 			run_builder(engine_version, None, None, BuilderCommands.CLEAN, Targets.ENGINE, engine_config, False, False)
 			no_config = False
 		
-		install_builder_image = get_image_name(Images.INSTALL_BUILDER, engine_version, engine_config)
-		if image_exists(install_builder_image):
-			remove_image(install_builder_image)
+		install_builder_image = CONTAINER_CLIENT.get_image_name(Images.INSTALL_BUILDER, engine_version, engine_config)
+		if CONTAINER_CLIENT.image_exists(install_builder_image):
+			CONTAINER_CLIENT.remove_image(install_builder_image)
 			no_config = False		
 
-		install_runner_image = get_image_name(Images.INSTALL_RUNNER, engine_version, engine_config)
-		if image_exists(install_runner_image):
-			remove_image(install_runner_image)
+		install_runner_image = CONTAINER_CLIENT.get_image_name(Images.INSTALL_RUNNER, engine_version, engine_config)
+		if CONTAINER_CLIENT.image_exists(install_runner_image):
+			CONTAINER_CLIENT.remove_image(install_runner_image)
 			no_config = False		
 
 		if no_config:
@@ -947,18 +992,18 @@ def create_project(engine_version, project_dir, project_name = None):
 	if project_name is not None:
 		resume_command.append(print_option(LongOptions.ALIAS, project_name))
 	else:
-		project_name = (get_real_project_dir() if is_in_container() else project_dir).name
+		project_name = (get_real_project_dir() if CONTAINER_CLIENT.is_in_container() else project_dir).name
 
 	resume_command = ' '.join(resume_command)
 
-	mapping = { str(project_dir): get_real_project_dir() } if is_in_container else None
+	mapping = { str(project_dir): get_real_project_dir() } if CONTAINER_CLIENT.is_in_container else None
 
 	check_ownership(project_dir, Messages.CHANGE_OWNERSHIP_PROJECT, resume_command, mapping)
 
 	initialized = run_builder(engine_version, engine_config, project_dir, BuilderCommands.INIT, Targets.PROJECT, project_name, engine_version)
 
 	if initialized:
-		print_msg(Level.INFO, Messages.INIT_COMPLETED, get_real_project_dir() if is_in_container() else project_dir)
+		print_msg(Level.INFO, Messages.INIT_COMPLETED, get_real_project_dir() if CONTAINER_CLIENT.is_in_container() else project_dir)
 
 
 def build_project(project_dir, binary, config):
@@ -1051,7 +1096,7 @@ def open_project(project_dir, engine_config = None, new_engine_version = None):
 	if new_engine_version is not None:
 		run_builder(engine_version, None, project_dir, BuilderCommands.SETTINGS, Targets.PROJECT, Settings.ENGINE.value, None, new_engine_version, False, True)
 
-	editor_library_file = O3DE_PROJECT_BIN_DIR / engine_config.value / "libAtom_AtomBridge.Editor.so"
+	editor_library_file = project_dir / "build" / "Linux" / "bin" / engine_config.value / "libAtom_AtomBridge.Editor.so"
 	if not editor_library_file.is_file():
 		built = run_builder(engine_version, engine_config, project_dir, BuilderCommands.BUILD, Targets.PROJECT, engine_config)
 		if not built:
@@ -1228,10 +1273,10 @@ def handle_upgrade_command(engine_version, rebuild):
 # --- CLI HANDLER (PROJECT) ---
 
 def parse_project_path(value):
-	if is_in_container():
+	if ContainerClient.calculate_is_in_container():
 		set_real_project_dir(value)
 		return O3DE_PROJECT_SOURCE_DIR
-	
+
 	project_dir = pathlib.Path(value if value is not None else '.')
 	if not project_dir.is_absolute():
 		project_dir = project_dir.resolve()
@@ -1250,9 +1295,9 @@ def handle_build_command(project_path, binary_name, config_name):
 
 	project_dir = parse_project_path(project_path)
 	if not project_dir.is_dir():
-		throw_error(Messages.INVALID_DIRECTORY, project_path)
+		throw_error(Messages.INVALID_DIRECTORY, (project_path if project_path is not None else project_dir))
 	elif not is_project(project_dir):
-		throw_error(Messages.PROJECT_NOT_FOUND, project_path)
+		throw_error(Messages.PROJECT_NOT_FOUND, (project_path if project_path is not None else project_dir))
 
 	try:
 		check_container_client()
@@ -1271,9 +1316,9 @@ def handle_clean_command(project_path, config_name, force):
 
 	project_dir = parse_project_path(project_path)
 	if not project_dir.is_dir():
-		throw_error(Messages.INVALID_DIRECTORY, project_path)
+		throw_error(Messages.INVALID_DIRECTORY, (project_path if project_path is not None else project_dir))
 	elif not is_project(project_dir):
-		throw_error(Messages.PROJECT_NOT_FOUND, project_path)
+		throw_error(Messages.PROJECT_NOT_FOUND, (project_path if project_path is not None else project_dir))
 
 	try:
 		check_container_client()
@@ -1316,9 +1361,9 @@ def handle_open_command(project_path, engine_config_name, new_engine_version):
 
 	project_dir = parse_project_path(project_path)
 	if not project_dir.is_dir():
-		throw_error(Messages.INVALID_DIRECTORY, project_path)
+		throw_error(Messages.INVALID_DIRECTORY, (project_path if project_path is not None else project_dir))
 	elif not is_project(project_dir):
-		throw_error(Messages.PROJECT_NOT_FOUND, project_path)
+		throw_error(Messages.PROJECT_NOT_FOUND, (project_path if project_path is not None else project_dir))
 
 	try:
 		check_container_client()
@@ -1343,9 +1388,9 @@ def handle_run_command(project_path, binary_name, config_name):
 
 	project_dir = parse_project_path(project_path)
 	if not project_dir.is_dir():
-		throw_error(Messages.INVALID_DIRECTORY, project_path)
+		throw_error(Messages.INVALID_DIRECTORY, (project_path if project_path is not None else project_dir))
 	elif not is_project(project_dir):
-		throw_error(Messages.PROJECT_NOT_FOUND, project_path)
+		throw_error(Messages.PROJECT_NOT_FOUND, (project_path if project_path is not None else project_dir))
 
 	try:
 		check_container_client()
@@ -1360,9 +1405,9 @@ def handle_run_command(project_path, binary_name, config_name):
 def handle_settings_command(project_path, setting_key, setting_value, clear):
 	project_dir = parse_project_path(project_path)
 	if not project_dir.is_dir():
-		throw_error(Messages.INVALID_DIRECTORY, project_path)
+		throw_error(Messages.INVALID_DIRECTORY, (project_path if project_path is not None else project_dir))
 	elif not is_project(project_dir):
-		throw_error(Messages.PROJECT_NOT_FOUND, project_path)
+		throw_error(Messages.PROJECT_NOT_FOUND, (project_path if project_path is not None else project_dir))
 
 	if setting_key is None:
 		setting_key_section = None
@@ -1391,6 +1436,9 @@ def handle_settings_command(project_path, setting_key, setting_value, clear):
 def main():
 	if DEVELOPMENT_MODE:
 		print_msg(Level.WARNING, Messages.IS_DEVELOPMENT_MODE)
+
+	if not RUN_CONTAINERS:
+		print_msg(Level.WARNING, Messages.IS_NO_CONTAINERS_MODE)
 
 	DESCRIPTIONS_COMMON_BINARY = "Project runtime: {}, {}".format(O3DE_ProjectBinaries.CLIENT.value, O3DE_ProjectBinaries.SERVER.value)
 	DESCRIPTIONS_COMMON_CONFIG = "Build configuration: {}, {}, {}".format(O3DE_Configs.DEBUG.value, O3DE_Configs.PROFILE.value, O3DE_Configs.RELEASE.value)
