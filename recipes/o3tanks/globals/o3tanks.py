@@ -68,6 +68,7 @@ class GPUDrivers(ObjectEnum):
 
 class Images(ObjectEnum):
 	BUILDER = "builder"
+	CLI = "cli"
 	INSTALL_BUILDER = "install-builder"
 	INSTALL_RUNNER = "install-runner"
 	RUNNER = "runner"
