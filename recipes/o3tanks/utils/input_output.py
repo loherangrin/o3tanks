@@ -61,6 +61,11 @@ class Messages(AutoEnum):
 	INSTALL_ALREADY_EXISTS = enum.auto()
 	INSTALL_AND_CONFIG_ALREADY_EXISTS = enum.auto()
 	INSTALL_COMPLETED = enum.auto()
+	INSTALL_APPLICATION_PACKAGES = enum.auto()
+	INSTALL_MAIN_SYSTEM_PACKAGES = enum.auto()
+	INSTALL_PORTED_SYSTEM_PACKAGES = enum.auto()
+	INSTALL_EXTERNAL_SYSTEM_PACKAGES_1 = enum.auto()
+	INSTALL_EXTERNAL_SYSTEM_PACKAGES_2 = enum.auto()
 	INVALID_ANSWER = enum.auto()
 	INVALID_BINARY = enum.auto()
 	INVALID_COMMAND = enum.auto()
@@ -83,6 +88,7 @@ class Messages(AutoEnum):
 	INVALID_REMOTE_BRANCH = enum.auto()
 	INVALID_OPERATING_SYSTEM = enum.auto()
 	INVALID_OPTION = enum.auto()
+	INVALID_PACKAGE_MANAGER_RESULT = enum.auto()
 	INVALID_PROJECT_NAME = enum.auto()
 	INVALID_REPOSITORY = enum.auto()
 	INVALID_REPOSITORY_URL = enum.auto()
@@ -111,11 +117,13 @@ class Messages(AutoEnum):
 	MISSING_INSTALL_AND_CONFIG = enum.auto()
 	MISSING_INSTALL = enum.auto()
 	MISSING_MODULE = enum.auto()
+	MISSING_PACKAGES = enum.auto()
 	MISSING_PROJECT = enum.auto()
 	MISSING_PYTHON = enum.auto()
 	MISSING_VERSION = enum.auto()
 	NO_UPDATES = enum.auto()
 	NO_UPDATES_IF_DETACHED = enum.auto()
+	PACKAGE_MANAGER_ERROR = enum.auto()
 	PROJECT_DIR_EMPTY = enum.auto()
 	PROJECT_DIR_NOT_EMPTY = enum.auto()
 	PROJECT_NOT_FOUND = enum.auto()
@@ -140,6 +148,7 @@ class Messages(AutoEnum):
 	UNINSTALL_COMPLETED = enum.auto()
 	UNREACHABLE_X11_DISPLAY = enum.auto()
 	UNSUPPORTED_CONTAINERS_AND_NO_CLIENT = enum.auto()
+	UNSUPPORTED_OPERATING_SYSTEM_FOR_REQUIREMENTS = enum.auto()
 	UPDATES_AVAILABLE = enum.auto()
 	UPGRADE_COMPLETED = enum.auto()
 	UPGRADE_COMPLETED_SKIP_REBUILD = enum.auto()
@@ -266,6 +275,16 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Version '{}' (with config '{}') is already installed. Please use '" + print_command(CliCommands.REFRESH) + "' to check if updates are available"
 	elif message_id == Messages.INSTALL_COMPLETED:
 		message_text = "Operation completed! Version '{}' is now usable"
+	elif message_id == Messages.INSTALL_APPLICATION_PACKAGES:
+		message_text = "- Install these application modules:"
+	elif message_id == Messages.INSTALL_MAIN_SYSTEM_PACKAGES:
+		message_text = "- Install these missing packages using your package manager:"
+	elif message_id == Messages.INSTALL_PORTED_SYSTEM_PACKAGES:
+		message_text = "- Download and manually install these additional packages from a different release of your distro:"
+	elif message_id == Messages.INSTALL_EXTERNAL_SYSTEM_PACKAGES_1:
+		message_text = "- Add these repositories to your package manager:"
+	elif message_id == Messages.INSTALL_EXTERNAL_SYSTEM_PACKAGES_2:
+		message_text = "- Install these additional packages from the previous repositories:"
 	elif message_id == Messages.INSTALL_QUESTION:
 		message_text = "Do you want to install"
 	elif message_id == Messages.INVALID_ANSWER:
@@ -312,6 +331,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "The current operating system is not supported: {}"
 	elif message_id == Messages.INVALID_OPTION:
 		message_text = "Unsupported option: {}"
+	elif message_id == Messages.INVALID_PACKAGE_MANAGER_RESULT:
+		message_text = "Unable to parse a returning line of the package manager: {}"
 	elif message_id == Messages.INVALID_PROJECT_NAME:
 		message_text = "Unable to retrieve the project name from the manifest file"
 	elif message_id == Messages.INVALID_REPOSITORY:
@@ -364,6 +385,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Unable to find an engine installation for version '{}' and config '{}'. Please use '" + print_command(CliCommands.INSTALL) + "' to add it and try again"
 	elif message_id == Messages.MISSING_MODULE:
 		message_text = "Unable to find '{0}' module.\nPlease add it to your Python installation using:\npython -m pip install {0}"
+	elif message_id == Messages.MISSING_PACKAGES:
+		message_text = "At least one dependency to build and/or run O3DE engine is missing.\nPlease review and execute the following instructions to fix it."
 	elif message_id == Messages.MISSING_PYTHON:
 		message_text = "Unable to find a valid Python 3 installation"
 	elif message_id == Messages.MISSING_PROJECT:
@@ -374,6 +397,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "No update was found. Your version is up-to-date!"
 	elif message_id == Messages.NO_UPDATES_IF_DETACHED:
 		message_text = "Source repository points to a specific revision (detached mode). No other updates can be installed"
+	elif message_id == Messages.PACKAGE_MANAGER_ERROR:
+		message_text = "Unable to calculate missing '{}' packages for '{}' sections"
 	elif message_id == Messages.PROJECT_DIR_EMPTY:
 		message_text = "Project directory cannot be empty"
 	elif message_id == Messages.PROJECT_DIR_NOT_EMPTY:
@@ -420,6 +445,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Unable to connect to display :{}. Your xhost may be blocking connections from the container user.\n\nPlease use the following command to enable it:\nxhost +SI:localuser:#{}"
 	elif message_id == Messages.UNSUPPORTED_CONTAINERS_AND_NO_CLIENT:
 		message_text = "No action can be performed on containers when they are disabled"
+	elif message_id == Messages.UNSUPPORTED_OPERATING_SYSTEM_FOR_REQUIREMENTS:
+		message_text = "Unable to verify requirements since your distro isn't supported yet.\nYou can try to convert the following instructions for 'Ubuntu 20.04':"
 	elif message_id == Messages.UPDATES_AVAILABLE:
 		message_text = "There are {} updates available. Please use '" + print_command(CliCommands.UPGRADE) + "' to update your local installation"
 	elif message_id == Messages.UPGRADE_COMPLETED:

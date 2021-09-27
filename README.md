@@ -7,7 +7,7 @@ Features:
 - Download, build and install engine versions from any Git repository (official or forks).
 - Check for engine updates and apply them automatically (if any).
 - Bind a project to a specific engine version.
-- Build, edit and run a project using its bound engine version. (*WORK IN PROGRESS*)
+- Build, edit and run a project using its bound engine version.
 
 **DISCLAIMER: This is an experimental tool at an early development stage. Its use in production environments is discouraged. Use it at your own risks!**
 
@@ -18,12 +18,12 @@ Features:
 1. Verify you meet the following requirements, according to the preferred mode:
    - **Containerized mode (Linux only)**
      - Docker Engine 19.03 (or greater), both root and rootless mode are supported. See [official documentation](https://docs.docker.com/get-docker/) for installation details.
-     - NVIDIA Docker 2 (or greater), if using a NVIDIA GPU with proprietary drivers. See [official documentation](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) for installation details.
+     - NVIDIA Container Toolkit, if using a NVIDIA GPU with proprietary drivers. See [official documentation](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) for installation details.
 
    - **Native mode (Linux, MacOS, Windows)**
-     - CMake 3.20.5 (or greater).
      - Python 3.8 (or greater).
      - pygit2 1.6.1 (or greater).
+     - O3DE prerequisites for building from source (see details at [Linux](https://o3de.org/docs/user-guide/platforms/linux) or [Windows](https://o3de.org/docs/user-guide/platforms/windows) pages in the official documentation).
 
 2. Clone this repository into a directory of your choice.
 3. (Optional) Register `o3tanks` globally to be called from any location:

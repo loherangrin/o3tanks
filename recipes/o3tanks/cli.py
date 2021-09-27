@@ -18,6 +18,7 @@ from .globals.o3tanks import *
 from .utils.containers import *
 from .utils.input_output import *
 from .utils.filesystem import *
+from .utils.requirements import *
 from .utils.subfunctions import *
 from .utils.types import *
 import argparse
@@ -280,6 +281,58 @@ def check_image(image_id, build_stage):
 
 		if not CONTAINER_CLIENT.image_exists(image_name):
 			throw_error(Messages.ERROR_BUILD_IMAGE, image_name)
+
+
+def check_requirements(resume_command):
+	commands = solve_unmet_requirements()
+
+	if commands.empty():
+		return
+
+	if not commands.is_default:
+		print_msg(Level.INFO, Messages.MISSING_PACKAGES)
+	else:
+		print_msg(Level.WARNING, Messages.UNSUPPORTED_OPERATING_SYSTEM_FOR_REQUIREMENTS)
+
+	if len(commands.main_system_packages) > 0:
+		print_msg(Level.INFO, '')
+		print_msg(Level.INFO, Messages.INSTALL_MAIN_SYSTEM_PACKAGES)
+
+		for command in commands.main_system_packages:
+			print_msg(Level.INFO, "  sudo {}".format(command))
+
+	if len(commands.ported_system_packages) > 0:
+		print_msg(Level.INFO, '')
+		print_msg(Level.INFO, Messages.INSTALL_PORTED_SYSTEM_PACKAGES)
+
+		for package_url in commands.ported_system_packages:
+			print_msg(Level.INFO, "  {}".format(package_url))
+
+	if len(commands.external_system_packages) > 0:
+		print_msg(Level.INFO, '')
+		print_msg(Level.INFO, Messages.INSTALL_EXTERNAL_SYSTEM_PACKAGES_1)
+
+		for repository_url, command in commands.external_system_packages.items():
+			print_msg(Level.INFO, "  {}".format(repository_url))
+
+		print_msg(Level.INFO, '')
+		print_msg(Level.INFO, Messages.INSTALL_EXTERNAL_SYSTEM_PACKAGES_2)
+
+		for repository_url, command in commands.external_system_packages.items():
+			print_msg(Level.INFO, "  sudo {}".format(command))
+
+	if len(commands.application_packages) > 0:
+		print_msg(Level.INFO, '')
+		print_msg(Level.INFO, Messages.INSTALL_APPLICATION_PACKAGES)
+
+		for command in commands.application_packages:
+			print_msg(Level.INFO, "  {}".format(command))
+
+	print_msg(Level.INFO, '')
+	print_msg(Level.INFO, Messages.RUN_RESUME_COMMAND)
+	print_msg(Level.INFO, resume_command)
+
+	exit(1)
 
 
 def check_ownership(paths, instructions, resume_command, mapping = None):
@@ -733,6 +786,9 @@ def install_engine(repository, engine_version, engine_config, force = False, rem
 
 		if has_build_config(build_dir, engine_config):
 			throw_error(Messages.INSTALL_AND_CONFIG_ALREADY_EXISTS, engine_version, engine_config)
+
+	if not RUN_CONTAINERS:
+		check_requirements(resume_command)
 
 	initialized = run_builder(engine_version, None, None, BuilderCommands.INIT, Targets.ENGINE)
 	if not initialized:
