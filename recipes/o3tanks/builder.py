@@ -25,6 +25,28 @@ import subprocess
 
 # -- SUBFUNCTIONS ---
 
+def delete_openssl_files(build_dir, config):
+	build_config_dir = get_build_config_path(build_dir, config)
+	openssl_files = [ 
+		"libcrypto.so",
+		"libcrypto.so.1.1",
+		"libssl.so",
+		"libssl.so.1.1"
+	]
+
+	openssl_directories = [
+		build_config_dir,
+		build_config_dir / "AWSCoreEditorQtBin",
+		build_config_dir / "EditorPlugins"
+	]
+
+	for directory in openssl_directories:
+		for file in openssl_files:
+			library = directory / file
+			if library.exists():
+				library.unlink()
+
+
 def search_clang_binaries():
 	supported_versions = [ "12", "11", "6.0", None ]
 
@@ -182,6 +204,8 @@ def build_engine(engine_config, binaries):
 		current_ap_config_file.unlink()
 		new_ap_config_file.rename(current_ap_config_file)
 
+	delete_openssl_files(O3DE_ENGINE_BUILD_DIR, engine_config)
+
 	return result.returncode
 
 
@@ -282,6 +306,9 @@ def build_project(config, binary):
 		options.append("/m")
 
 	result = execute_cmake(options)
+
+	if result.returncode == 0:
+		delete_openssl_files(O3DE_PROJECT_BUILD_DIR, config)
 
 	return result.returncode
 
