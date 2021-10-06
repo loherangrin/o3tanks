@@ -109,6 +109,7 @@ class Messages(AutoEnum):
 	LFS_NOT_FOUND = enum.auto()
 	MISSING_BINARY = enum.auto()
 	MISSING_BOUND_VERSION = enum.auto()
+	MISSING_CLANG = enum.auto()
 	MISSING_CMAKE = enum.auto()
 	MISSING_CONFIG = enum.auto()
 	MISSING_DISPLAY = enum.auto()
@@ -369,6 +370,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "No binary exists at: {}. Do you have built the project with: config='{}' binary='{}'?"
 	elif message_id == Messages.MISSING_BOUND_VERSION:
 		message_text = "No version '{}' was found. Please use '" + print_command(CliCommands.INSTALL) + "' to download it or '" + print_command(CliCommands.SETTINGS) + "' to clear it from project settings"
+	elif message_id == Messages.MISSING_CLANG:
+		message_text = "Unable to find 'clang'. Supported versions: 6, 12"
 	elif message_id == Messages.MISSING_CMAKE:
 		message_text = "Unable to find 'cmake'.\nPlease refer to CMake official documentation for installation instructions:\nhttps://cmake.org/install"
 	elif message_id == Messages.MISSING_CONFIG:

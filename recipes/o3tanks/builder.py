@@ -25,6 +25,26 @@ import subprocess
 
 # -- SUBFUNCTIONS ---
 
+def search_clang_binaries():
+	supported_versions = [ "12", "6.0", None ]
+
+	for version in supported_versions:
+		suffix = "-{}".format(version) if version is not None else ""
+		clang_bin = "clang{}".format(suffix)
+		clang_cpp_bin = "clang++{}".format(suffix)
+
+		try:
+			subprocess.run([ clang_bin, "--version" ], stdout = subprocess.DEVNULL, stderr = subprocess.DEVNULL, check = True)
+			subprocess.run([ clang_cpp_bin, "--version" ], stdout = subprocess.DEVNULL, stderr = subprocess.DEVNULL, check = True)
+
+			return [ clang_bin, clang_cpp_bin ]
+
+		except:
+			pass
+
+	return [ None, None ]
+
+
 def generate_configurations(source_dir, build_dir):
 	common_options = [
 		"-B", str(build_dir),
@@ -34,10 +54,15 @@ def generate_configurations(source_dir, build_dir):
 	]
 
 	if OPERATING_SYSTEM.family is OSFamilies.LINUX:
+		clang_bin, clang_cpp_bin = search_clang_binaries()
+
+		if (clang_bin is None) or (clang_cpp_bin is None):
+			throw_error(Messages.MISSING_CLANG)
+
 		os_options = [
 			"-G", "Ninja Multi-Config",
-			"-DCMAKE_C_COMPILER=clang-6.0",
-			"-DCMAKE_CXX_COMPILER=clang++-6.0"
+			"-DCMAKE_C_COMPILER={}".format(clang_bin),
+			"-DCMAKE_CXX_COMPILER={}".format(clang_cpp_bin)
 		]
 
 	elif OPERATING_SYSTEM.family is OSFamilies.MAC:
