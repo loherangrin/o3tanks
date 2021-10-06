@@ -13,43 +13,48 @@
 # limitations under the License.
 
 
-FROM ubuntu:20.04 AS base_focal
+ARG OS_IMAGE
+FROM ${OS_IMAGE} AS base
 
-ENV O3TANKS_PACKAGES_DIR="/tmp/packages"
+ARG OS_NAME
+ARG OS_VERSION
+ENV O3TANKS_CONTAINER_OS="${OS_NAME}:${OS_VERSION}"
+
+ENV O3TANKS_PACKAGES_DIR="/tmp/o3tanks/packages"
+ENV O3TANKS_EXTERNAL_PACKAGES_DIR="${O3TANKS_PACKAGES_DIR}/external"
 ENV O3TANKS_PACKAGE_MANAGER="${O3TANKS_PACKAGES_DIR}/package_manager.sh"
+
 COPY "packages" "${O3TANKS_PACKAGES_DIR}"
 
-RUN "${O3TANKS_PACKAGE_MANAGER}" install system base \
- && sed --in-place --regexp-extended 's/^#[[:space:]]*(en_US.UTF-8 UTF-8)$/\1/g' /etc/locale.gen \
- && locale-gen
+RUN mkdir --parents "${O3TANKS_EXTERNAL_PACKAGES_DIR}" \
+ && "${O3TANKS_PACKAGE_MANAGER}" install system base
 
-ENV LANG en_US.UTF-8
-ENV LANGUAGE en_US:en
-ENV LC_ALL en_US.UTF-8
+ARG LOCALE
+ENV LC_ALL=${LOCALE}
 
 ARG USER_NAME
 ARG USER_GROUP
 ARG USER_UID
 ARG USER_GID
+ARG USER_HOME=/home/${USER_NAME}
 RUN if [ -z "${USER_NAME}" ] || [ -z "${USER_GROUP}" ] || [ -z "${USER_UID}" ] || [ -z "${USER_GID}" ]; then \
 		echo 'ERROR: At least one user property is missing. Please check your --build-arg values' \
 	 && exit 1 \
   ; fi \
  && if [ ${USER_GID} -gt 0 ]; then \
- 		addgroup \
+ 		groupadd \
 			--gid "${USER_GID}" \
 			"${USER_GROUP}" \
   ; fi \
  && if [ ${USER_UID} -gt 0 ]; then \
-		adduser \
+		useradd \
  			--uid "${USER_UID}" \
 			--gid "${USER_GID}" \
-			--gecos "${USER_NAME},,," \
-			--disabled-password \
+			--create-home \
+			--home-dir "${USER_HOME}" \
 			"${USER_NAME}" \
   ; fi
 
-ARG USER_HOME=/home/${USER_NAME}
 ENV O3DE_DIR=${USER_HOME}/o3de
 
 ENV O3DE_ENGINE_DIR=${O3DE_DIR}/engine
@@ -69,7 +74,7 @@ WORKDIR ${USER_HOME}
 
 # ---
 
-FROM base_focal AS scripts
+FROM base AS scripts
 
 RUN "${O3TANKS_PACKAGE_MANAGER}" install system scripts
 
@@ -113,6 +118,7 @@ RUN cd "${O3TANKS_DIR}/.." \
  && python3 -m compileall -f -d "${O3TANKS_DIR}" "${O3TANKS_SCRIPTS_DIR}" \
  && chown --recursive ${USER_NAME}:${USER_GROUP} "${O3TANKS_DIR}"
 ENV O3TANKS_PACKAGES_DIR=''
+ENV O3TANKS_EXTERNAL_PACKAGES_DIR=''
 ENV O3TANKS_PACKAGE_MANAGER=''
 
 # ---
@@ -124,6 +130,7 @@ ENTRYPOINT [ "python3", "-u", "-m", "o3tanks.updater" ]
 RUN "${O3TANKS_PACKAGE_MANAGER}" install python updater \
  && rm --recursive "${O3TANKS_PACKAGES_DIR}"
 ENV O3TANKS_PACKAGES_DIR=''
+ENV O3TANKS_EXTERNAL_PACKAGES_DIR=''
 ENV O3TANKS_PACKAGE_MANAGER=''
 
 ARG USER_NAME
@@ -146,7 +153,15 @@ RUN python3 -m compileall -f -d "${O3TANKS_DIR}" "${O3TANKS_SCRIPTS_DIR}"
 
 # ---
 
-FROM base_focal AS runtime_dependencies
+FROM base AS external_runtime_files
+
+RUN "${O3TANKS_PACKAGE_MANAGER}" install --no-external system runtime_external
+
+# ---
+
+FROM base AS runtime_dependencies
+
+COPY --from=external_runtime_files "${O3TANKS_EXTERNAL_PACKAGES_DIR}" "${O3TANKS_EXTERNAL_PACKAGES_DIR}"
 
 RUN "${O3TANKS_PACKAGE_MANAGER}" install system runtime
 
@@ -159,13 +174,19 @@ ENTRYPOINT [ "python3", "-u", "-m", "o3tanks.runner" ]
 RUN "${O3TANKS_PACKAGE_MANAGER}" install system runner
 
 ARG USER_NAME
-ARG INSTALL_GPU_MESA=false
-RUN if [ "${INSTALL_GPU_MESA}" = "true" ]; then \
- 		"${O3TANKS_PACKAGE_MANAGER}" install system gpu_mesa \
+ARG INSTALL_GPU_AMD=false
+ARG INSTALL_GPU_INTEL=false
+RUN if [ "${INSTALL_GPU_AMD}" = "true" ]; then \
+ 		"${O3TANKS_PACKAGE_MANAGER}" install system gpu_amd \
+	 && usermod --append --groups render,video ${USER_NAME} \
+  ; fi \
+ && if [ "${INSTALL_GPU_INTEL}" = "true" ]; then \
+ 		"${O3TANKS_PACKAGE_MANAGER}" install system gpu_intel \
 	 && usermod --append --groups render,video ${USER_NAME} \
   ; fi \
  && rm --recursive "${O3TANKS_PACKAGES_DIR}"
 ENV O3TANKS_PACKAGES_DIR=''
+ENV O3TANKS_EXTERNAL_PACKAGES_DIR=''
 ENV O3TANKS_PACKAGE_MANAGER=''
 
 USER ${USER_NAME}
@@ -187,22 +208,15 @@ RUN python3 -m compileall -f -d "${O3TANKS_DIR}" "${O3TANKS_SCRIPTS_DIR}"
 
 # ---
 
-FROM ubuntu:20.04 AS cmake_downloader
+FROM base AS external_development_files
 
-RUN export DEBIAN_FRONTEND=noninteractive \
- && apt-get update && apt-get install -y --no-install-recommends \
-		ca-certificates \
-		gnupg \
-		wget \
- && rm -rf /var/lib/apt/lists/*	\
- && wget --quiet -O - https://apt.kitware.com/keys/kitware-archive-latest.asc  | gpg --dearmor - > /tmp/keyring.gpg
+RUN "${O3TANKS_PACKAGE_MANAGER}" install --no-external system development_external
 
 # ---
 
 FROM runtime_dependencies AS development_dependencies
 
-ARG KEYRING_PATH=/usr/share/keyrings/kitware-archive-keyring.gpg
-COPY --from=cmake_downloader /tmp/keyring.gpg ${KEYRING_PATH}
+COPY --from=external_development_files "${O3TANKS_EXTERNAL_PACKAGES_DIR}" "${O3TANKS_EXTERNAL_PACKAGES_DIR}"
 
 RUN "${O3TANKS_PACKAGE_MANAGER}" install system development
 
@@ -214,6 +228,7 @@ ENTRYPOINT [ "python3", "-u", "-m", "o3tanks.builder" ]
 
 RUN rm --recursive "${O3TANKS_PACKAGES_DIR}"
 ENV O3TANKS_PACKAGES_DIR=''
+ENV O3TANKS_EXTERNAL_PACKAGES_DIR=''
 ENV O3TANKS_PACKAGE_MANAGER=''
 
 ARG USER_NAME

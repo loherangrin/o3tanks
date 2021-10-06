@@ -32,7 +32,7 @@ def register_project():
 		subprocess.run([ O3DE_CLI_FILE, "register", "--project-path", O3DE_PROJECT_SOURCE_DIR ], stdout = subprocess.DEVNULL, check = True)
 
 	except FileNotFoundError as error:
-		if error.filename == O3DE_CLI_FILE.name or (OperatingSystems.WINDOWS and error.filename is None):
+		if error.filename == O3DE_CLI_FILE.name or (OPERATING_SYSTEM.family is OSFamilies.WINDOWS and error.filename is None):
 			throw_error(Messages.CORRUPTED_ENGINE_SOURCE)
 		else:
 			raise error

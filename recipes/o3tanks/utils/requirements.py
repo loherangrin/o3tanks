@@ -13,9 +13,9 @@
 # limitations under the License.
 
 
-from ..globals.o3tanks import GPU_DRIVER_NAME, OPERATING_SYSTEM, RUN_CONTAINERS, GPUDrivers, Images, OperatingSystems, get_real_bin_file
+from ..globals.o3tanks import GPU_DRIVER_NAME, OPERATING_SYSTEM, RUN_CONTAINERS, GPUDrivers, Images, get_real_bin_file
 from .input_output import Level, Messages, print_msg, throw_error
-from .types import ObjectEnum
+from .types import ObjectEnum, OSFamilies
 import subprocess
 
 
@@ -28,6 +28,7 @@ class RequirementCommands:
 		self.ported_system_packages = []
 		self.external_system_packages = {}
 		self.application_packages = []
+		self.other_commands = []
 
 
 	def empty(self):
@@ -35,7 +36,8 @@ class RequirementCommands:
 			len(self.main_system_packages) == 0 and
 			len(self.ported_system_packages) == 0 and
 			len(self.external_system_packages) == 0 and
-			len(self.application_packages) == 0
+			len(self.application_packages) == 0 and
+			len(self.other_commands) == 0
 		)
 
 
@@ -52,7 +54,8 @@ class ApplicationPackageSections(ObjectEnum):
 class SystemPackageSections(ObjectEnum):
 	BASE = "base"
 	DEVELOPMENT = "development"
-	GPU_MESA = "gpu_mesa"
+	GPU_AMD = "gpu_amd"
+	GPU_INTEL = "gpu_intel"
 	RUNNER = Images.RUNNER.value
 	RUNTIME = "runtime"
 	SCRIPTS = "scripts"
@@ -78,12 +81,14 @@ def solve_unmet_requirements():
 		],
 	}
 
-	if GPU_DRIVER_NAME in [ GPUDrivers.AMD_OPEN, GPUDrivers.AMD_PROPRIETARY, GPUDrivers.INTEL ]:
-		all_sections[RequirementCategories.SYSTEM].append(SystemPackageSections.GPU_MESA)
+	if GPU_DRIVER_NAME in [ GPUDrivers.AMD_OPEN, GPUDrivers.AMD_PROPRIETARY ]:
+		all_sections[RequirementCategories.SYSTEM].append(SystemPackageSections.GPU_AMD)
+	elif GPU_DRIVER_NAME is GPUDrivers.INTEL:
+		all_sections[RequirementCategories.SYSTEM].append(SystemPackageSections.GPU_INTEL)
 
 	commands = RequirementCommands()
 
-	if OPERATING_SYSTEM is OperatingSystems.LINUX:
+	if OPERATING_SYSTEM.family is OSFamilies.LINUX:
 		packages_dir = get_real_bin_file().parent / "recipes" / "packages"
 		package_manager_file = packages_dir / "package_manager.sh"
 
@@ -111,6 +116,8 @@ def solve_unmet_requirements():
 						target = commands.ported_system_packages
 					elif line == "external":
 						target = commands.external_system_packages
+					elif line == "other":
+						target = commands.other_commands
 					elif isinstance(target, list):
 						target.append(line)
 					elif isinstance(target, dict):
@@ -128,13 +135,13 @@ def solve_unmet_requirements():
 				for line in output_lines:
 					commands.application_packages.append(line)
 
-	elif OPERATING_SYSTEM is OperatingSystems.MAC:
+	elif OPERATING_SYSTEM.family is OSFamilies.MAC:
 		pass
 
-	elif OPERATING_SYSTEM is OperatingSystems.WINDOWS:
+	elif OPERATING_SYSTEM.family is OSFamilies.WINDOWS:
 		pass
 	
 	else:
-		throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM)
+		throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM.family)
 
 	return commands

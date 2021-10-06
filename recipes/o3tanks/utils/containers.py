@@ -14,26 +14,26 @@
 
 
 from ..globals.o3de import O3DE_ENGINE_BUILD_DIR, O3DE_ENGINE_INSTALL_DIR, O3DE_ENGINE_SOURCE_DIR, O3DE_PACKAGES_DIR, O3DE_PROJECT_SOURCE_DIR
-from ..globals.o3tanks import DATA_DIR, DEVELOPMENT_MODE, DISPLAY_ID, GPU_DRIVER_NAME, OPERATING_SYSTEM, REAL_USER, RUN_CONTAINERS, ROOT_DIR, USER_NAME, USER_GROUP, GPUDrivers, Images, OperatingSystems, Volumes, get_version_number
+from ..globals.o3tanks import DATA_DIR, DEVELOPMENT_MODE, DISPLAY_ID, GPU_DRIVER_NAME, OPERATING_SYSTEM, REAL_USER, RUN_CONTAINERS, ROOT_DIR, USER_NAME, USER_GROUP, GPUDrivers, Images, Volumes, get_version_number
 from .filesystem import clear_directory, is_directory_empty
 from .input_output import Level, Messages, get_verbose, print_msg, throw_error
 from .serialization import serialize_list
-from .types import AutoEnum, User
+from .types import AutoEnum, LinuxOSNames, OSFamilies, User
 import abc
 import enum
 import os
 import pathlib
 import re
 
-if OPERATING_SYSTEM in [ OperatingSystems.LINUX, OperatingSystems.MAC ]:
+if OPERATING_SYSTEM.family in [ OSFamilies.LINUX, OSFamilies.MAC ]:
 	import grp
 	import pwd
 
-elif OPERATING_SYSTEM is OperatingSystems.WINDOWS:
+elif OPERATING_SYSTEM.family is OSFamilies.WINDOWS:
 	import getpass
 
 else:
-	throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM)
+	throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM.family)
 
 
 # --- TYPES ---
@@ -57,7 +57,30 @@ class ContainerClient(abc.ABC):
 	def _get_build_arguments(self):
 		container_user = self.get_container_user()
 
+		if OPERATING_SYSTEM.name is LinuxOSNames.ARCH:
+			os_image = "archlinux"
+		elif OPERATING_SYSTEM.name is LinuxOSNames.OPENSUSE_LEAP:
+			os_image = OPERATING_SYSTEM.name.value.replace('-', '/')
+		else:
+			os_image = OPERATING_SYSTEM.name.value
+
+		os_version = (OPERATING_SYSTEM.version if OPERATING_SYSTEM.version is not None else "latest")
+		os_image = "{}:{}".format(os_image, os_version)
+
+		if OPERATING_SYSTEM.name is LinuxOSNames.ARCH:
+			locale = "en_US.utf8"
+		elif OPERATING_SYSTEM.name in [ LinuxOSNames.DEBIAN, LinuxOSNames.UBUNTU ]:
+			locale = "C.UTF-8"
+		elif OPERATING_SYSTEM.name in [ LinuxOSNames.FEDORA, LinuxOSNames.OPENSUSE_LEAP ]:
+			locale = "C.utf8"
+		else:
+			locale = "POSIX"
+
 		return {
+			"LOCALE": locale,
+			"OS_IMAGE": os_image,
+			"OS_NAME": OPERATING_SYSTEM.name.value,
+			"OS_VERSION": os_version,
 			"USER_NAME": container_user.name,
 			"USER_GROUP": container_user.group,
 			"USER_UID": str(container_user.uid),
@@ -143,14 +166,14 @@ class ContainerClient(abc.ABC):
 
 
 	def get_current_user(self):
-		if OPERATING_SYSTEM in [ OperatingSystems.LINUX, OperatingSystems.MAC ]:
+		if OPERATING_SYSTEM.family in [ OSFamilies.LINUX, OSFamilies.MAC ]:
 			uid = os.getuid()
 			gid = os.getgid()
 
 			name = pwd.getpwuid(uid).pw_name
 			group = grp.getgrgid(gid).gr_name
 
-		elif OPERATING_SYSTEM is OperatingSystems.WINDOWS:
+		elif OPERATING_SYSTEM.family is OSFamilies.WINDOWS:
 			uid = None
 			gid = None
 
@@ -158,7 +181,7 @@ class ContainerClient(abc.ABC):
 			group = None
 
 		else:
-			throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM)
+			throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM.family)
 
 		return User(name, group, uid, gid)
 
@@ -229,6 +252,12 @@ class ContainerClient(abc.ABC):
 			image += ":development"
 		else:
 			image += ":{}".format(get_version_number())
+
+		if OPERATING_SYSTEM.name is not None:
+			image += "_{}".format(OPERATING_SYSTEM.name.value)
+
+			if OPERATING_SYSTEM.version is not None:
+				image += "_{}".format(OPERATING_SYSTEM.version)
 
 		return image
 
@@ -545,7 +574,7 @@ class DockerContainerClient(ContainerClient):
 
 		print_msg(Level.INFO, Messages.BUILD_IMAGE_FROM_ARCHIVE, image_name, tar_file)
 
-		if image_name.endswith(":development"):
+		if image_name.endswith(":development") or (":development_" in image_name):
 			stage += "_dev"
 
 		full_buildargs = self._get_build_arguments()
@@ -583,7 +612,7 @@ class DockerContainerClient(ContainerClient):
 
 		print_msg(Level.INFO, Messages.BUILD_IMAGE_FROM_DIRECTORY, image_name, context_dir)
 
-		if image_name.endswith(":development"):
+		if image_name.endswith(":development") or (":development_" in image_name):
 			stage += "_dev"
 
 		full_buildargs = self._get_build_arguments()
@@ -840,7 +869,7 @@ class NoneContainerClient(ContainerClient):
 
 		full_environment = NoneContainerClient._get_environment_variables()
 
-		if display and (OPERATING_SYSTEM is OperatingSystems.LINUX):
+		if display and (OPERATING_SYSTEM.family is OSFamilies.LINUX):
 			if DISPLAY_ID < 0:
 				throw_error(Messages.MISSING_DISPLAY)
 

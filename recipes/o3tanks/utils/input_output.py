@@ -66,6 +66,7 @@ class Messages(AutoEnum):
 	INSTALL_PORTED_SYSTEM_PACKAGES = enum.auto()
 	INSTALL_EXTERNAL_SYSTEM_PACKAGES_1 = enum.auto()
 	INSTALL_EXTERNAL_SYSTEM_PACKAGES_2 = enum.auto()
+	INSTALL_OTHER_COMMANDS = enum.auto()
 	INVALID_ANSWER = enum.auto()
 	INVALID_BINARY = enum.auto()
 	INVALID_COMMAND = enum.auto()
@@ -109,6 +110,7 @@ class Messages(AutoEnum):
 	LFS_NOT_FOUND = enum.auto()
 	MISSING_BINARY = enum.auto()
 	MISSING_BOUND_VERSION = enum.auto()
+	MISSING_CLANG = enum.auto()
 	MISSING_CMAKE = enum.auto()
 	MISSING_CONFIG = enum.auto()
 	MISSING_DISPLAY = enum.auto()
@@ -285,6 +287,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "- Add these repositories to your package manager:"
 	elif message_id == Messages.INSTALL_EXTERNAL_SYSTEM_PACKAGES_2:
 		message_text = "- Install these additional packages from the previous repositories:"
+	elif message_id == Messages.INSTALL_OTHER_COMMANDS:
+		message_text = "- Execute these additional commands:"
 	elif message_id == Messages.INSTALL_QUESTION:
 		message_text = "Do you want to install"
 	elif message_id == Messages.INVALID_ANSWER:
@@ -369,6 +373,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "No binary exists at: {}. Do you have built the project with: config='{}' binary='{}'?"
 	elif message_id == Messages.MISSING_BOUND_VERSION:
 		message_text = "No version '{}' was found. Please use '" + print_command(CliCommands.INSTALL) + "' to download it or '" + print_command(CliCommands.SETTINGS) + "' to clear it from project settings"
+	elif message_id == Messages.MISSING_CLANG:
+		message_text = "Unable to find 'clang'. Supported versions: 6, 11, 12"
 	elif message_id == Messages.MISSING_CMAKE:
 		message_text = "Unable to find 'cmake'.\nPlease refer to CMake official documentation for installation instructions:\nhttps://cmake.org/install"
 	elif message_id == Messages.MISSING_CONFIG:
@@ -386,7 +392,7 @@ def get_message_text(message_id, *args, **kwargs):
 	elif message_id == Messages.MISSING_MODULE:
 		message_text = "Unable to find '{0}' module.\nPlease add it to your Python installation using:\npython -m pip install {0}"
 	elif message_id == Messages.MISSING_PACKAGES:
-		message_text = "At least one dependency to build and/or run O3DE engine is missing.\nPlease review and execute the following instructions to fix it."
+		message_text = "At least one dependency to use O3DE engine is missing.\nPlease review and execute the following steps to fix the issue."
 	elif message_id == Messages.MISSING_PYTHON:
 		message_text = "Unable to find a valid Python 3 installation"
 	elif message_id == Messages.MISSING_PROJECT:

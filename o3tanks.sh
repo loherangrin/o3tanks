@@ -179,7 +179,7 @@ build_image()
 		stage_option="--target ${stage}"
 
 		case ${image_tag} in
-			(*:development)
+			(*:development|*:development_*)
 				stage_option="${stage_option}_dev"
 				;;
 		esac
@@ -187,10 +187,56 @@ build_image()
 		stage_option=''
 	fi
 
+	local os_image
+	case ${OPERATING_SYSTEM_NAME} in
+		("${OS_NAMES_ARCH}")
+			os_image="archlinux"
+			;;
+
+		("${OS_NAMES_OPENSUSE_LEAP}")
+			os_image=$(echo "${OPERATING_SYSTEM_NAME}" | awk 'gsub("-", "/", $0)')
+			;;
+
+		(*)
+			os_image="${OPERATING_SYSTEM_NAME}"
+			;;
+	esac
+
+	local os_version
+	if [ -n "${OPERATING_SYSTEM_VERSION}" ]; then
+		os_version="${OPERATING_SYSTEM_VERSION}"
+	else
+		os_version='latest'
+	fi
+	os_image="${os_image}:${os_version}"
+
+	local locale
+	case ${OPERATING_SYSTEM_NAME} in
+		("${OS_NAMES_ARCH}")
+			locale='en_US.utf8'
+			;;
+
+		("${OS_NAMES_DEBIAN}"|"${OS_NAMES_UBUNTU}")
+			locale='C.UTF-8'
+			;;
+
+		("${OS_NAMES_FEDORA}"|"${OS_NAMES_OPENSUSE_LEAP}")
+			locale='C.utf8'
+			;;
+
+		(*)
+			locale='POSIX'
+			;;
+	esac
+
 	docker build \
 		--tag "${image_tag}" \
 		${stage_option} \
 		--file "${context_dir}/Dockerfile.linux" \
+		--build-arg LOCALE="${locale}" \
+		--build-arg OS_IMAGE="${os_image}" \
+		--build-arg OS_NAME="${OPERATING_SYSTEM_NAME}" \
+		--build-arg OS_VERSION="${os_version}" \
 		--build-arg USER_NAME="${USER_NAME}" \
 		--build-arg USER_GROUP="${USER_GROUP}" \
 		--build-arg USER_UID="${USER_UID}" \
@@ -231,6 +277,13 @@ get_image_name()
 		fi
 	fi
 
+	if [ -n "${OPERATING_SYSTEM_NAME}" ]; then
+		image_version="${image_version}_${OPERATING_SYSTEM_NAME}"
+
+		if [ -n "${OPERATING_SYSTEM_VERSION}" ]; then
+			image_version="${image_version}_${OPERATING_SYSTEM_VERSION}"
+		fi
+	fi
 	echo "${IMAGE_PREFIX}-${image_id}${engine_version}${engine_config}:${image_version}"
 	return 0
 }
@@ -350,6 +403,21 @@ check_python()
 	fi
 }
 
+extract_substring()
+{
+	local string="${1}"
+	local delimiter="${2}"
+	local index="${3}"
+
+	substring=$(echo "${string}" | awk \
+		-F "${delimiter}" \
+		-v i="${index}" \
+		'{ value = $i; gsub(" ", "", value); print value; exit }'
+	)
+
+	echo "${substring}"
+}
+
 get_gpu_driver()
 {
 	local gpu_driver
@@ -358,27 +426,27 @@ get_gpu_driver()
 	echo "${gpu_driver}"
 }
 
-get_os()
+get_os_family()
 {
 	local os_name
 	os_name=$(uname -s)
 
-	local os_type
+	local os_family
 	case ${os_name} in
 		('Darwin')
-			os_type="${OPERATING_SYSTEMS_MAC}"
+			os_family="${OS_FAMILIES_MAC}"
 			;;
 
 		('Linux')
-			os_type="${OPERATING_SYSTEMS_LINUX}"
+			os_family="${OS_FAMILIES_LINUX}"
 			;;
 
 		(*)
-			throw_error "${MESSAGES_INVALID_OPERATING_SYSTEM}" "${current_os}"
+			throw_error "${MESSAGES_INVALID_OPERATING_SYSTEM}" "${os_family}"
 			;;
 	esac
 
-	echo "${os_type}"
+	echo "${os_family}"
 	return 0
 }
 
@@ -451,18 +519,24 @@ init_globals()
 	readonly MESSAGES_UNSUPPORTED_CONTAINTERS_MODE=9
 	readonly MESSAGES_VOLUMES_DIR_NOT_FOUND=10
 
-	readonly OPERATING_SYSTEMS_LINUX=1
-	readonly OPERATING_SYSTEMS_MAC=2
+	readonly OS_FAMILIES_LINUX=1
+	readonly OS_FAMILIES_MAC=2
+
+	readonly OS_NAMES_ARCH='arch'
+	readonly OS_NAMES_DEBIAN='debian'
+	readonly OS_NAMES_FEDORA='fedora'
+	readonly OS_NAMES_OPENSUSE_LEAP='opensuse-leap'
+	readonly OS_NAMES_UBUNTU='ubuntu'
 
 	readonly SHORT_OPTION_PROJECT='p'
 	readonly LONG_OPTION_PROJECT='project'
 
-	local current_os
-	current_os=$(get_os)
-	readonly OPERATING_SYSTEM="${current_os}"
+	local host_os_family
+	host_os_family=$(get_os_family)
+	readonly HOST_OPERATING_SYSTEM="${host_os_family}"
 
 	local no_containers_default
-	if [ "${OPERATING_SYSTEM}" = "${OPERATING_SYSTEMS_MAC}" ]; then
+	if [ "${HOST_OPERATING_SYSTEM}" = "${OS_FAMILIES_MAC}" ]; then
 		no_containers_default='true'
 	else
 		no_containers_default='false'
@@ -474,7 +548,7 @@ init_globals()
 	if [ "${run_containers_all}" = 'false' ]; then
 		run_containers_cli='false'
 	else
-		if [ "${OPERATING_SYSTEM}" = "${OPERATING_SYSTEMS_MAC}" ]; then
+		if [ "${HOST_OPERATING_SYSTEM}" = "${OS_FAMILIES_MAC}" ]; then
 			throw_error "${MESSAGES_UNSUPPORTED_CONTAINTERS_MODE}" "MacOS"
 		fi
 
@@ -482,6 +556,29 @@ init_globals()
 	fi
 	readonly RUN_CONTAINERS_ALL=${run_containers_all}
 	readonly RUN_CONTAINERS_CLI="${run_containers_cli}"
+
+	local os_family
+	local os_name
+	local os_version
+	if [ "${RUN_CONTAINERS_ALL}" = 'true' ]; then
+		os_family="${OS_FAMILIES_LINUX}"
+
+		local os_value="${O3TANKS_CONTAINER_OS:-}"
+		if [ -n "${os_value}" ]; then
+			os_name=$(extract_substring "${os_value}" ':' '1')
+			os_version=$(extract_substring "${os_value}" ':' '2')
+		else
+			os_name="${OS_NAMES_UBUNTU}"
+			os_version='20.04'
+		fi
+	else
+		os_family=''
+		os_name=''
+		os_version=''
+	fi
+	readonly OPERATING_SYSTEM_FAMILY="${os_family}"
+	readonly OPERATING_SYSTEM_NAME="${os_name}"
+	readonly OPERATING_SYSTEM_VERSION="${os_version}"
 
 	local host_user_name
 	local host_user_group

@@ -25,6 +25,48 @@ import subprocess
 
 # -- SUBFUNCTIONS ---
 
+def delete_openssl_files(build_dir, config):
+	build_config_dir = get_build_config_path(build_dir, config)
+	openssl_files = [ 
+		"libcrypto.so",
+		"libcrypto.so.1.1",
+		"libssl.so",
+		"libssl.so.1.1"
+	]
+
+	openssl_directories = [
+		build_config_dir,
+		build_config_dir / "AWSCoreEditorQtBin",
+		build_config_dir / "EditorPlugins"
+	]
+
+	for directory in openssl_directories:
+		for file in openssl_files:
+			library = directory / file
+			if library.exists():
+				library.unlink()
+
+
+def search_clang_binaries():
+	supported_versions = [ "12", "11", "6.0", None ]
+
+	for version in supported_versions:
+		suffix = "-{}".format(version) if version is not None else ""
+		clang_bin = "clang{}".format(suffix)
+		clang_cpp_bin = "clang++{}".format(suffix)
+
+		try:
+			subprocess.run([ clang_bin, "--version" ], stdout = subprocess.DEVNULL, stderr = subprocess.DEVNULL, check = True)
+			subprocess.run([ clang_cpp_bin, "--version" ], stdout = subprocess.DEVNULL, stderr = subprocess.DEVNULL, check = True)
+
+			return [ clang_bin, clang_cpp_bin ]
+
+		except:
+			pass
+
+	return [ None, None ]
+
+
 def generate_configurations(source_dir, build_dir):
 	common_options = [
 		"-B", str(build_dir),
@@ -33,25 +75,30 @@ def generate_configurations(source_dir, build_dir):
 		"-DLY_3RDPARTY_PATH={}".format(O3DE_PACKAGES_DIR)
 	]
 
-	if OPERATING_SYSTEM is OperatingSystems.LINUX:
+	if OPERATING_SYSTEM.family is OSFamilies.LINUX:
+		clang_bin, clang_cpp_bin = search_clang_binaries()
+
+		if (clang_bin is None) or (clang_cpp_bin is None):
+			throw_error(Messages.MISSING_CLANG)
+
 		os_options = [
 			"-G", "Ninja Multi-Config",
-			"-DCMAKE_C_COMPILER=clang-6.0",
-			"-DCMAKE_CXX_COMPILER=clang++-6.0"
+			"-DCMAKE_C_COMPILER={}".format(clang_bin),
+			"-DCMAKE_CXX_COMPILER={}".format(clang_cpp_bin)
 		]
 
-	elif OPERATING_SYSTEM is OperatingSystems.MAC:
+	elif OPERATING_SYSTEM.family is OSFamilies.MAC:
 		os_options = [
 			"-G", "XCode"
 		]
 
-	elif OPERATING_SYSTEM is OperatingSystems.WINDOWS:
+	elif OPERATING_SYSTEM.family is OSFamilies.WINDOWS:
 		os_options = [
 			"-G", "Visual Studio 16 2019"
 		]
 	
 	else:
-		throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM)
+		throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM.family)
 
 	all_options = common_options + os_options
 	result = execute_cmake(all_options)
@@ -82,7 +129,7 @@ def execute_cmake(arguments):
 		result = subprocess.run([ cmake_file ] + arguments)
 
 	except FileNotFoundError as error:
-		if error.filename == cmake_file or (OperatingSystems.WINDOWS and error.filename is None):
+		if error.filename == cmake_file or (OPERATING_SYSTEM.family is OSFamilies.WINDOWS and error.filename is None):
 			throw_error(Messages.MISSING_CMAKE)
 		else:
 			raise error
@@ -102,11 +149,13 @@ def build_engine(engine_config, binaries):
 		"--target", ', '.join(binaries) if (binaries is not None) else "install"
 	]
 
-	if OPERATING_SYSTEM is OperatingSystems.WINDOWS:
+	if OPERATING_SYSTEM.family is OSFamilies.WINDOWS:
 		options.append("--")
 		options.append("/m")
 
 	result = execute_cmake(options)
+	if result.returncode != 0:
+		return result.returncode
 
 	if binaries is None:
 		required_paths = [ (pathlib.PurePath("python") / "runtime") ]
@@ -155,6 +204,8 @@ def build_engine(engine_config, binaries):
 		current_ap_config_file.unlink()
 		new_ap_config_file.rename(current_ap_config_file)
 
+	delete_openssl_files(O3DE_ENGINE_BUILD_DIR, engine_config)
+
 	return result.returncode
 
 
@@ -188,13 +239,13 @@ def generate_engine_configurations():
 		result = subprocess.run([ O3DE_ENGINE_SOURCE_DIR / "python" / get_python_file ])
 
 	except FileNotFoundError as error:
-		if error.filename == get_python_file or (OperatingSystems.WINDOWS and error.filename is None):
+		if error.filename == get_python_file or (OPERATING_SYSTEM.family is OSFamilies.WINDOWS and error.filename is None):
 			throw_error(Messages.CORRUPTED_ENGINE_SOURCE, error.filename)
 		else:
 			raise error
 
 	if result.returncode != 0:
-		throw_error(Messages.UNCOMPLETED_REGISTRATION, error.returncode, "\n{}\n{}".format(error.stdout, error.stderr))
+		throw_error(Messages.UNCOMPLETED_REGISTRATION, result.returncode, "\n{}\n{}".format(result.stdout, result.stderr))
 
 	generated = generate_configurations(O3DE_ENGINE_SOURCE_DIR, O3DE_ENGINE_BUILD_DIR)
 	if not generated:
@@ -231,7 +282,7 @@ def build_project(config, binary):
 		subprocess.run([ O3DE_CLI_FILE, "register", "--project-path", str(O3DE_PROJECT_SOURCE_DIR) ], stdout = subprocess.DEVNULL, check = True)
 
 	except FileNotFoundError as error:
-		if error.filename == O3DE_CLI_FILE.name or (OperatingSystems.WINDOWS and error.filename is None):
+		if error.filename == O3DE_CLI_FILE.name or (OPERATING_SYSTEM.family is OSFamilies.WINDOWS and error.filename is None):
 			throw_error(Messages.CORRUPTED_ENGINE_SOURCE, error.filename)
 		else:
 			raise error
@@ -250,11 +301,14 @@ def build_project(config, binary):
 		"--target", target_name
 	]
 
-	if OPERATING_SYSTEM is OperatingSystems.WINDOWS:
+	if OPERATING_SYSTEM.family is OSFamilies.WINDOWS:
 		options.append("--")
 		options.append("/m")
 
 	result = execute_cmake(options)
+
+	if result.returncode == 0:
+		delete_openssl_files(O3DE_PROJECT_BUILD_DIR, config)
 
 	return result.returncode
 
@@ -294,7 +348,7 @@ def clean_project(config, force):
 			subprocess.run([ O3DE_CLI_FILE, "register", "--project-path", str(O3DE_PROJECT_SOURCE_DIR) ], stdout = subprocess.DEVNULL, check = True)
 
 		except FileNotFoundError as error:
-			if error.filename == O3DE_CLI_FILE.name or (OperatingSystems.WINDOWS and error.filename is None):
+			if error.filename == O3DE_CLI_FILE.name or (OPERATING_SYSTEM.family is OSFamilies.WINDOWS and error.filename is None):
 				throw_error(Messages.CORRUPTED_ENGINE_SOURCE, error.filename)
 			else:
 				raise error
@@ -323,7 +377,7 @@ def generate_project_configurations(project_name, engine_version):
 			])
 
 	except FileNotFoundError as error:
-		if error.filename == O3DE_CLI_FILE.name or (OperatingSystems.WINDOWS and error.filename is None):
+		if error.filename == O3DE_CLI_FILE.name or (OPERATING_SYSTEM.family is OSFamilies.WINDOWS and error.filename is None):
 			throw_error(Messages.CORRUPTED_ENGINE_SOURCE, error.filename)
 		else:
 			raise error
