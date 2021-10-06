@@ -187,7 +187,16 @@ build_image()
 		stage_option=''
 	fi
 
-	local os_image="${OPERATING_SYSTEM_NAME}"
+	local os_image
+	case ${OPERATING_SYSTEM_NAME} in
+		("${OS_NAMES_ARCH}")
+			os_image="archlinux"
+			;;
+
+		(*)
+			os_image="${OPERATING_SYSTEM_NAME}"
+			;;
+	esac
 
 	local os_version
 	if [ -n "${OPERATING_SYSTEM_VERSION}" ]; then
@@ -199,6 +208,10 @@ build_image()
 
 	local locale
 	case ${OPERATING_SYSTEM_NAME} in
+		("${OS_NAMES_ARCH}")
+			locale='en_US.utf8'
+			;;
+
 		("${OS_NAMES_UBUNTU}")
 			locale='C.UTF-8'
 			;;
@@ -501,6 +514,7 @@ init_globals()
 	readonly OS_FAMILIES_LINUX=1
 	readonly OS_FAMILIES_MAC=2
 
+	readonly OS_NAMES_ARCH='arch'
 	readonly OS_NAMES_UBUNTU='ubuntu'
 
 	readonly SHORT_OPTION_PROJECT='p'

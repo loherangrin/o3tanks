@@ -269,7 +269,8 @@ def check_image(image_id, build_stage):
 
 		if image_id is Images.RUNNER:
 			build_arguments = {
-				"INSTALL_GPU_MESA": "true" if GPU_DRIVER_NAME in [ GPUDrivers.AMD_OPEN, GPUDrivers.AMD_PROPRIETARY, GPUDrivers.INTEL ] else "false"
+				"INSTALL_GPU_INTEL": "true" if GPU_DRIVER_NAME is GPUDrivers.INTEL else "false",
+				"INSTALL_GPU_AMD": "true" if GPU_DRIVER_NAME in [ GPUDrivers.AMD_OPEN, GPUDrivers.AMD_PROPRIETARY ] else "false"
 			}
 		else:
 			build_arguments = {}

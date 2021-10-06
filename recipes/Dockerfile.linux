@@ -153,7 +153,15 @@ RUN python3 -m compileall -f -d "${O3TANKS_DIR}" "${O3TANKS_SCRIPTS_DIR}"
 
 # ---
 
+FROM base AS external_runtime_files
+
+RUN "${O3TANKS_PACKAGE_MANAGER}" install --no-external system runtime_external
+
+# ---
+
 FROM base AS runtime_dependencies
+
+COPY --from=external_runtime_files "${O3TANKS_EXTERNAL_PACKAGES_DIR}" "${O3TANKS_EXTERNAL_PACKAGES_DIR}"
 
 RUN "${O3TANKS_PACKAGE_MANAGER}" install system runtime
 
@@ -166,9 +174,14 @@ ENTRYPOINT [ "python3", "-u", "-m", "o3tanks.runner" ]
 RUN "${O3TANKS_PACKAGE_MANAGER}" install system runner
 
 ARG USER_NAME
-ARG INSTALL_GPU_MESA=false
-RUN if [ "${INSTALL_GPU_MESA}" = "true" ]; then \
- 		"${O3TANKS_PACKAGE_MANAGER}" install system gpu_mesa \
+ARG INSTALL_GPU_AMD=false
+ARG INSTALL_GPU_INTEL=false
+RUN if [ "${INSTALL_GPU_AMD}" = "true" ]; then \
+ 		"${O3TANKS_PACKAGE_MANAGER}" install system gpu_amd \
+	 && usermod --append --groups render,video ${USER_NAME} \
+  ; fi \
+ && if [ "${INSTALL_GPU_INTEL}" = "true" ]; then \
+ 		"${O3TANKS_PACKAGE_MANAGER}" install system gpu_intel \
 	 && usermod --append --groups render,video ${USER_NAME} \
   ; fi \
  && rm --recursive "${O3TANKS_PACKAGES_DIR}"

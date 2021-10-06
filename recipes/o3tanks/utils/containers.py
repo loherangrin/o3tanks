@@ -57,10 +57,17 @@ class ContainerClient(abc.ABC):
 	def _get_build_arguments(self):
 		container_user = self.get_container_user()
 
-		os_version = (OPERATING_SYSTEM.version if OPERATING_SYSTEM.version is not None else "latest")
-		os_image = "{}:{}".format(OPERATING_SYSTEM.name.value, os_version)
+		if OPERATING_SYSTEM.name is LinuxOSNames.ARCH:
+			os_image = "archlinux"
+		else:
+			os_image = OPERATING_SYSTEM.name.value
 
-		if OPERATING_SYSTEM.name is LinuxOSNames.UBUNTU:
+		os_version = (OPERATING_SYSTEM.version if OPERATING_SYSTEM.version is not None else "latest")
+		os_image = "{}:{}".format(os_image, os_version)
+
+		if OPERATING_SYSTEM.name is LinuxOSNames.ARCH:
+			locale = "en_US.utf8"
+		elif OPERATING_SYSTEM.name is LinuxOSNames.UBUNTU:
 			locale = "C.UTF-8"
 		else:
 			locale = "POSIX"

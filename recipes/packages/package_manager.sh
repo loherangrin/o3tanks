@@ -26,6 +26,10 @@ get_message_text()
 			echo 'Unable to calculate where the script is running'
 			;;
 
+		("${MESSAGES_ERROR_MAKEPKG}")
+			echo 'An error occurred while building an AUR package: %s'
+			;;
+
 		("${MESSAGES_INVALID_ARGUMENTS}")
 			echo 'One or more argument are missing.\nSyntax: <category> <section> [<other_section> ...]'
 			;;
@@ -44,6 +48,10 @@ get_message_text()
 
 		("${MESSAGES_INVALID_OPERATING_SYSTEM}")
 			echo 'Unsupported operating system: %s'
+			;;
+
+		("${MESSAGES_INVALID_PACMAN_REPOSITORY}")
+			echo "Unsupported external 'pacman' repository for a package: %s"
 			;;
 
 		("${MESSAGES_MISSING_CFG}")
@@ -171,20 +179,6 @@ add_apt_repository()
 	return 0
 }
 
-is_apt_package_installed()
-{
-	local package_name="${1}"
-
-	local status
-	status=$(dpkg-query --show --showformat='${db:Status-Status}' "${package_name}" 2> /dev/null)
-
-	if ! [ "${status}" = 'installed' ]; then
-		return 1
-	fi
-
-	return 0
-}
-
 port_apt_package()
 {
 	local repository="${1}"
@@ -239,6 +233,102 @@ port_apt_package()
 	fi
 
 	echo "${generated_files}"
+	return 0
+}
+
+# --- PACMAN FUNCTIONS ---
+
+port_pacman_package()
+{
+	local repository_name="${1}"
+	local package="${2}"
+
+	if ! [ "${repository_name}" = 'aur' ]; then
+		throw_error "${MESSAGES_INVALID_PACMAN_REPOSITORY}" "${package}"
+	fi
+
+	local package_file="${TMP_DIR}/${package}.pkg.tar.zst"
+	if ! [ -f "${package_file}" ]; then
+		pacman --sync --noconfirm --needed \
+			base-devel \
+			tar \
+			wget
+
+		local archive_name="${package}.tar.gz"
+		local archive_file="${TMP_DIR}/${archive_name}"
+		if ! [ -f "${archive_file}" ]; then
+			if ! [ -d "${TMP_DIR}" ]; then
+				mkdir --parents "${TMP_DIR}"
+			fi
+
+			wget \
+				--output-document="${archive_file}" \
+				https://aur.archlinux.org/cgit/aur.git/snapshot/${archive_name}
+		fi
+
+		local previous_cwd=$(pwd)
+		local source_dir="${TMP_DIR}/${package}"
+		if ! [ -d "${source_dir}" ]; then
+			cd "${TMP_DIR}"
+			tar --extract -f "${archive_name}"
+
+			local user_name="user"
+			local user_group="user"
+			chown --recursive "${user_name}:${user_group}" "${package}"
+		fi
+
+		local build_file=$(ls "${source_dir}" | grep '.pkg.tar.zst' | head -n 1)
+		if ! [ -f "${build_file}" ]; then
+			cd "${source_dir}"
+			su "${user_name}" -c 'makepkg -f'
+
+			build_file=$(ls "${source_dir}" | grep '.pkg.tar.zst' | head -n 1)
+
+			if ! [ -f "${build_file}" ]; then
+				throw_error "${MESSAGES_ERROR_MAKEPKG}" "${package}"
+			fi
+		fi
+
+		mv "${build_file}" "${package_file}"
+		cd "${previous_cwd}"
+
+		rm --force --recursive "${source_dir}"
+		rm --force "${archive_file}"
+	fi
+
+	if [ "${INSTALL_EXTERNAL_PACKAGES}" = 'false' ]; then
+		return
+	fi
+
+	pacman --upgrade --noconfirm "${package_file}"
+
+	rm --force "${package_file}"
+}
+
+# --- PACKAGES FUNCTIONS ---
+
+is_deb_package_installed()
+{
+	local package_name="${1}"
+
+	local status
+	status=$(dpkg-query --show --showformat='${db:Status-Status}' "${package_name}" 2> /dev/null)
+
+	if ! [ "${status}" = 'installed' ]; then
+		return 1
+	fi
+
+	return 0
+}
+
+is_pkg_package_installed()
+{
+	local package_name="${1}"
+
+	if ! pacman --query "${package_name}" > /dev/null 2>&1; then
+		return 1
+	fi
+
 	return 0
 }
 
@@ -306,15 +396,17 @@ init_globals()
 	readonly COMMANDS_INSTALL='install'
 
 	readonly MESSAGES_BIN_DIR_NOT_FOUND=1
-	readonly MESSAGES_INVALID_ARGUMENTS=2
-	readonly MESSAGES_INVALID_CATEGORY=3
-	readonly MESSAGES_INVALID_COMMAND=4
-	readonly MESSAGES_INVALID_EXTERNAL_REPOSITORY=5
-	readonly MESSAGES_INVALID_OPERATING_SYSTEM=6
-	readonly MESSAGES_MISSING_CFG=7
-	readonly MESSAGES_MISSING_KEYRING=8
-	readonly MESSAGES_MISSING_OPERATING_SYSTEM=9
-	readonly MESSAGES_MISSING_PYTHON=10
+	readonly MESSAGES_ERROR_MAKEPKG=2
+	readonly MESSAGES_INVALID_ARGUMENTS=3
+	readonly MESSAGES_INVALID_CATEGORY=4
+	readonly MESSAGES_INVALID_COMMAND=5
+	readonly MESSAGES_INVALID_EXTERNAL_REPOSITORY=6
+	readonly MESSAGES_INVALID_OPERATING_SYSTEM=7
+	readonly MESSAGES_INVALID_PACMAN_REPOSITORY=8
+	readonly MESSAGES_MISSING_CFG=9
+	readonly MESSAGES_MISSING_KEYRING=10
+	readonly MESSAGES_MISSING_OPERATING_SYSTEM=11
+	readonly MESSAGES_MISSING_PYTHON=12
 
 	local os_name
 	os_name=$(get_os_attribute 'ID')
@@ -333,6 +425,7 @@ init_globals()
 
 	OPERATING_SYSTEM_FALLBACK='false'
 
+	readonly OS_NAMES_ARCH='arch'
 	readonly OS_NAMES_UBUNTU='ubuntu'
 
 	readonly TMP_DIR="/tmp/o3tanks/packages/external"
@@ -369,10 +462,26 @@ install_packages()
 
 		("${CATEGORIES_SYSTEM}")
 			case ${OPERATING_SYSTEM_NAME} in
+				("${OS_NAMES_ARCH}")
+					package_manager='pacman'
+
+					search_command='is_pkg_package_installed'
+					setup_command=''
+					if [ "${manual_installation}" = 'true' ]; then
+						refresh_command=''
+						install_command='pacman -S'
+						clean_command=''
+					else
+						refresh_command='pacman --sync --refresh'
+						install_command='pacman --sync --noconfirm --needed'
+						clean_command='pacman --sync --noconfirm -cc'
+					fi
+					;;
+				
 				("${OS_NAMES_UBUNTU}")
 					package_manager='apt'
 
-					search_command='is_apt_package_installed'
+					search_command='is_deb_package_installed'
 					if [ "${manual_installation}" = 'true' ]; then
 						setup_command=''
 						refresh_command='apt update'
@@ -644,28 +753,40 @@ install_ported_packages()
 		package_version=$(extract_substring "${package}" ':' '3')
 
 		if [ "${manual_installation}" = 'true' ]; then
+			local package_url
+
 			case ${OPERATING_SYSTEM_NAME} in
+				("${OS_NAMES_ARCH}")
+					package_url="https://aur.archlinux.org/packages/${package_name}"
+					;;
+
 				("${OS_NAMES_UBUNTU}")
-					echo "https://packages.ubuntu.com/${repository_name}/${package_name}"
+					package_url="https://packages.ubuntu.com/${repository_name}/${package_name}"
 					;;
 
 				(*)
 					throw_error "${MESSAGES_INVALID_OPERATING_SYSTEM}" "${OPERATING_SYSTEM_NAME}"
 					;;
 			esac
+
+			echo "${package_url}"
+
 		else
-			case ${OPERATING_SYSTEM_NAME} in
-				("${OS_NAMES_UBUNTU}")
-					local configured='false'
-					local config_files
-					config_files=$(port_apt_package "${repository_name}" "${package_name}") && configured='true'
+			local porting_command
+			local exec_subshell
+			local skip_package
 
-					if [ "${configured}" = 'false' ]; then
-						print_msg '' "${config_files}"
-						exit 1
-					elif [ -n "${config_files}" ]; then
-						clean_files="${clean_files} ${config_files}"
-					fi
+			case ${OPERATING_SYSTEM_NAME} in
+				("${OS_NAMES_ARCH}")
+					porting_command='port_pacman_package'
+					exec_subshell='false'
+					skip_package='true'
+					;;
+
+				("${OS_NAMES_UBUNTU}")
+					porting_command='port_apt_package'
+					exec_subshell='true'
+					skip_package='false'
 					;;
 
 				(*)
@@ -673,9 +794,26 @@ install_ported_packages()
 					;;
 			esac
 
-			packages="${packages} ${package_name}"
-			if [ -n "${package_version}" ]; then
-				packages="${packages}${version_operator}${package_version}"
+			if [ "${exec_subshell}" = 'true' ]; then
+				local configured='false'
+				local config_files
+				config_files=$(${porting_command} "${repository_name}" "${package_name}") && configured='true'
+
+				if [ "${configured}" = 'false' ]; then
+					print_msg '' "${config_files}"
+					exit 1
+				elif [ -n "${config_files}" ]; then
+					clean_files="${clean_files} ${config_files}"
+				fi
+			else
+				${porting_command} "${repository_name}" "${package_name}"
+			fi
+
+			if [ "${skip_package}" = 'false' ]; then
+				packages="${packages} ${package_name}"
+				if [ -n "${package_version}" ]; then
+					packages="${packages}${version_operator}${package_version}"
+				fi
 			fi
 		fi
 	done

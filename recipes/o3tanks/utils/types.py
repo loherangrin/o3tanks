@@ -58,6 +58,7 @@ class OSNames(ObjectEnum):
 
 
 class LinuxOSNames(OSNames):
+	ARCH = "arch"
 	UBUNTU = "ubuntu"
 
 

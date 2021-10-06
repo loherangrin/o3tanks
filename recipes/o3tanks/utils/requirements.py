@@ -52,7 +52,8 @@ class ApplicationPackageSections(ObjectEnum):
 class SystemPackageSections(ObjectEnum):
 	BASE = "base"
 	DEVELOPMENT = "development"
-	GPU_MESA = "gpu_mesa"
+	GPU_AMD = "gpu_amd"
+	GPU_INTEL = "gpu_intel"
 	RUNNER = Images.RUNNER.value
 	RUNTIME = "runtime"
 	SCRIPTS = "scripts"
@@ -78,8 +79,10 @@ def solve_unmet_requirements():
 		],
 	}
 
-	if GPU_DRIVER_NAME in [ GPUDrivers.AMD_OPEN, GPUDrivers.AMD_PROPRIETARY, GPUDrivers.INTEL ]:
-		all_sections[RequirementCategories.SYSTEM].append(SystemPackageSections.GPU_MESA)
+	if GPU_DRIVER_NAME in [ GPUDrivers.AMD_OPEN, GPUDrivers.AMD_PROPRIETARY ]:
+		all_sections[RequirementCategories.SYSTEM].append(SystemPackageSections.GPU_AMD)
+	elif GPU_DRIVER_NAME is GPUDrivers.INTEL:
+		all_sections[RequirementCategories.SYSTEM].append(SystemPackageSections.GPU_INTEL)
 
 	commands = RequirementCommands()
 
