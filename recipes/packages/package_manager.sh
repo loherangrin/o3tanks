@@ -196,6 +196,18 @@ port_apt_package()
 		cp "${main_source_file}" "${external_source_file}"
 		sed --in-place "s/${OPERATING_SYSTEM_CODENAME}/${repository}/g" "${external_source_file}"
 
+		if [ "${OPERATING_SYSTEM_NAME}" = "${OS_NAMES_DEBIAN}" ]; then
+			case ${repository} in
+				('buster')
+					sed --in-place "s@${repository}-security@${repository}/updates@g" "${external_source_file}"
+					;;
+
+				('sid')
+					sed --in-place --regexp-extended "s@^.+${repository}[^ ]+ main\$@@g" "${external_source_file}"
+					;;
+			esac
+		fi
+
 		generated_files="${external_source_file}"
 	else
 		generated_files=''
@@ -426,6 +438,7 @@ init_globals()
 	OPERATING_SYSTEM_FALLBACK='false'
 
 	readonly OS_NAMES_ARCH='arch'
+	readonly OS_NAMES_DEBIAN='debian'
 	readonly OS_NAMES_UBUNTU='ubuntu'
 
 	readonly TMP_DIR="/tmp/o3tanks/packages/external"
@@ -478,7 +491,7 @@ install_packages()
 					fi
 					;;
 				
-				("${OS_NAMES_UBUNTU}")
+				("${OS_NAMES_DEBIAN}"|"${OS_NAMES_UBUNTU}")
 					package_manager='apt'
 
 					search_command='is_deb_package_installed'
@@ -668,7 +681,7 @@ install_added_packages()
 		local repository_url
 		local keyring_url
 		case ${OPERATING_SYSTEM_NAME} in
-			("${OS_NAMES_UBUNTU}")
+			("${OS_NAMES_DEBIAN}"|"${OS_NAMES_UBUNTU}")
 				repository_name=$(echo "${repository_1}" | sed 's@[/\.]@_@g')
 				repository_url="https://${repository_1}"
 				keyring_url="https://${repository_2}.asc"
@@ -683,7 +696,7 @@ install_added_packages()
 			echo "${repository_url} ${install_command} ${package_reference}"
 		else
 			case ${OPERATING_SYSTEM_NAME} in
-				("${OS_NAMES_UBUNTU}")
+				("${OS_NAMES_DEBIAN}"|"${OS_NAMES_UBUNTU}")
 					local configured='false'
 					local config_files
 					config_files=$(add_apt_repository "${repository_name}" "${repository_url}" "${keyring_url}") && configured='true'
@@ -760,6 +773,10 @@ install_ported_packages()
 					package_url="https://aur.archlinux.org/packages/${package_name}"
 					;;
 
+				("${OS_NAMES_DEBIAN}")
+					package_url="https://packages.debian.org/${repository_name}/${package_name}"
+					;;
+
 				("${OS_NAMES_UBUNTU}")
 					package_url="https://packages.ubuntu.com/${repository_name}/${package_name}"
 					;;
@@ -783,7 +800,7 @@ install_ported_packages()
 					skip_package='true'
 					;;
 
-				("${OS_NAMES_UBUNTU}")
+				("${OS_NAMES_DEBIAN}"|"${OS_NAMES_UBUNTU}")
 					porting_command='port_apt_package'
 					exec_subshell='true'
 					skip_package='false'

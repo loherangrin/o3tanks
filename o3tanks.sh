@@ -212,7 +212,7 @@ build_image()
 			locale='en_US.utf8'
 			;;
 
-		("${OS_NAMES_UBUNTU}")
+		("${OS_NAMES_DEBIAN}"|"${OS_NAMES_UBUNTU}")
 			locale='C.UTF-8'
 			;;
 
@@ -515,6 +515,7 @@ init_globals()
 	readonly OS_FAMILIES_MAC=2
 
 	readonly OS_NAMES_ARCH='arch'
+	readonly OS_NAMES_DEBIAN='debian'
 	readonly OS_NAMES_UBUNTU='ubuntu'
 
 	readonly SHORT_OPTION_PROJECT='p'

@@ -371,7 +371,7 @@ def get_message_text(message_id, *args, **kwargs):
 	elif message_id == Messages.MISSING_BOUND_VERSION:
 		message_text = "No version '{}' was found. Please use '" + print_command(CliCommands.INSTALL) + "' to download it or '" + print_command(CliCommands.SETTINGS) + "' to clear it from project settings"
 	elif message_id == Messages.MISSING_CLANG:
-		message_text = "Unable to find 'clang'. Supported versions: 6, 12"
+		message_text = "Unable to find 'clang'. Supported versions: 6, 11, 12"
 	elif message_id == Messages.MISSING_CMAKE:
 		message_text = "Unable to find 'cmake'.\nPlease refer to CMake official documentation for installation instructions:\nhttps://cmake.org/install"
 	elif message_id == Messages.MISSING_CONFIG:
