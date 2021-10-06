@@ -66,6 +66,7 @@ class Messages(AutoEnum):
 	INSTALL_PORTED_SYSTEM_PACKAGES = enum.auto()
 	INSTALL_EXTERNAL_SYSTEM_PACKAGES_1 = enum.auto()
 	INSTALL_EXTERNAL_SYSTEM_PACKAGES_2 = enum.auto()
+	INSTALL_OTHER_COMMANDS = enum.auto()
 	INVALID_ANSWER = enum.auto()
 	INVALID_BINARY = enum.auto()
 	INVALID_COMMAND = enum.auto()
@@ -286,6 +287,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "- Add these repositories to your package manager:"
 	elif message_id == Messages.INSTALL_EXTERNAL_SYSTEM_PACKAGES_2:
 		message_text = "- Install these additional packages from the previous repositories:"
+	elif message_id == Messages.INSTALL_OTHER_COMMANDS:
+		message_text = "- Execute these additional commands:"
 	elif message_id == Messages.INSTALL_QUESTION:
 		message_text = "Do you want to install"
 	elif message_id == Messages.INVALID_ANSWER:

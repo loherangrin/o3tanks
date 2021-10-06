@@ -54,6 +54,10 @@ get_message_text()
 			echo "Unsupported external 'pacman' repository for a package: %s"
 			;;
 
+		("${MESSAGES_INVALID_ZYPPER_REPOSITORY}")
+			echo "Unsupported additional 'zypper' repository for a package: %s"
+			;;
+
 		("${MESSAGES_MISSING_CFG}")
 			echo "Unable to retrieve a configuration file for '%s' packages on '${OPERATING_SYSTEM_NAME} ${OPERATING_SYSTEM_VERSION}' operating system"
 			;;
@@ -317,6 +321,26 @@ port_pacman_package()
 	rm --force "${package_file}"
 }
 
+# --- ZYPPER FUNCTIONS ---
+
+add_zypper_repository()
+{
+	local repository_name="${1}"
+	local repository_url="${2}"
+
+	if zypper repos "${repository_url}" > /dev/null 2>&1 || [ "${INSTALL_EXTERNAL_PACKAGES}" = 'false' ]; then
+		return 0
+	fi
+
+	zypper addrepo "${repository_url}" > /dev/null
+	zypper --gpg-auto-import-keys refresh > /dev/null
+
+	repository_alias=$(echo "${repository_name}" | sed 's/:/_/g')
+
+	echo "${repository_alias}"
+	return 0
+}
+
 # --- PACKAGES FUNCTIONS ---
 
 is_deb_package_installed()
@@ -347,8 +371,18 @@ is_pkg_package_installed()
 is_rpm_package_installed()
 {
 	local package_name="${1}"
+	local is_collection="${2}"
 
-	if ! rpm --query "${package_name}" > /dev/null 2>&1; then
+	if [ "${is_collection}" = 'true' ] && [ "${OPERATING_SYSTEM_NAME}" = "${OS_NAMES_OPENSUSE_LEAP}" ]; then
+		local found='false'
+		local result
+		result=$(zypper --terse --no-refresh info --type pattern "${package_name}" 2> /dev/null | grep 'Installed[[:space:]]\+:[[:space:]]\+Yes') && found='true'
+
+		if [ "${found}" = 'false' ] || [ -z "${result}" ]; then
+			return 1
+		fi
+
+	elif ! rpm --query "${package_name}" > /dev/null 2>&1; then
 		return 1
 	fi
 
@@ -426,10 +460,11 @@ init_globals()
 	readonly MESSAGES_INVALID_EXTERNAL_REPOSITORY=6
 	readonly MESSAGES_INVALID_OPERATING_SYSTEM=7
 	readonly MESSAGES_INVALID_PACMAN_REPOSITORY=8
-	readonly MESSAGES_MISSING_CFG=9
-	readonly MESSAGES_MISSING_KEYRING=10
-	readonly MESSAGES_MISSING_OPERATING_SYSTEM=11
-	readonly MESSAGES_MISSING_PYTHON=12
+	readonly MESSAGES_INVALID_ZYPPER_REPOSITORY=9
+	readonly MESSAGES_MISSING_CFG=10
+	readonly MESSAGES_MISSING_KEYRING=11
+	readonly MESSAGES_MISSING_OPERATING_SYSTEM=12
+	readonly MESSAGES_MISSING_PYTHON=13
 
 	local os_name
 	os_name=$(get_os_attribute 'ID')
@@ -451,6 +486,7 @@ init_globals()
 	readonly OS_NAMES_ARCH='arch'
 	readonly OS_NAMES_DEBIAN='debian'
 	readonly OS_NAMES_FEDORA='fedora'
+	readonly OS_NAMES_OPENSUSE_LEAP='opensuse-leap'
 	readonly OS_NAMES_UBUNTU='ubuntu'
 
 	readonly TMP_DIR="/tmp/o3tanks/packages/external"
@@ -468,7 +504,8 @@ install_packages()
 	local search_command
 	local setup_command
 	local refresh_command
-	local install_command
+	local install_collection_command
+	local install_package_command
 	local clean_command
 
 	case ${category} in
@@ -479,9 +516,10 @@ install_packages()
 			setup_command=''
 			refresh_command=''
 			clean_command=''
-			install_command="${PYTHON_BIN_FILE} -m pip install"
+			install_package_command="${PYTHON_BIN_FILE} -m pip install"
+			install_collection_command=''
 			if [ "${manual_installation}" = 'false' ]; then
-				install_command="${install_command} --no-cache-dir"
+				install_package_command="${install_package_command} --no-cache-dir"
 			fi
 			;;
 
@@ -494,13 +532,14 @@ install_packages()
 					setup_command=''
 					if [ "${manual_installation}" = 'true' ]; then
 						refresh_command=''
-						install_command='pacman -S'
+						install_package_command='pacman -S'
 						clean_command=''
 					else
 						refresh_command='pacman --sync --refresh'
-						install_command='pacman --sync --noconfirm --needed'
+						install_package_command='pacman --sync --noconfirm --needed'
 						clean_command='pacman --sync --noconfirm -cc'
 					fi
+					install_collection_command="${install_package_command}"
 					;;
 				
 				("${OS_NAMES_DEBIAN}"|"${OS_NAMES_UBUNTU}")
@@ -510,14 +549,15 @@ install_packages()
 					if [ "${manual_installation}" = 'true' ]; then
 						setup_command=''
 						refresh_command='apt update'
-						install_command='apt install'
+						install_package_command='apt install'
 						clean_command=''
 					else
 						setup_command='export DEBIAN_FRONTEND=noninteractive'
 						refresh_command='apt-get update'
-						install_command='apt-get install --assume-yes --no-install-recommends'
+						install_package_command='apt-get install --assume-yes --no-install-recommends'
 						clean_command='rm --force --recursive /var/lib/apt/lists/*'
 					fi
+					install_collection_command="${install_package_command}"
 					;;
 
 				("${OS_NAMES_FEDORA}")
@@ -527,12 +567,31 @@ install_packages()
 					setup_command=''
 					if [ "${manual_installation}" = 'true' ]; then
 						refresh_command=''
-						install_command='dnf install'
+						install_package_command='dnf install'
 						clean_command=''
 					else
 						refresh_command='dnf makecache'
-						install_command='dnf install --assumeyes --nodocs --setopt install_weak_deps=false'
+						install_package_command='dnf install --assumeyes --nodocs --setopt install_weak_deps=false'
 						clean_command='dnf clean all'
+					fi
+					install_collection_command="${install_package_command}"
+					;;
+
+				("${OS_NAMES_OPENSUSE_LEAP}")
+					package_manager='zypper'
+
+					search_command='is_rpm_package_installed'
+					setup_command=''
+					if [ "${manual_installation}" = 'true' ]; then
+						refresh_command=''
+						install_package_command='zypper install'
+						install_collection_command="${install_package_command} -t pattern"
+						clean_command=''
+					else
+						refresh_command='zypper refresh'
+						install_package_command='zypper --no-refresh install --no-confirm --no-recommends'
+						install_collection_command="${install_package_command} --type pattern"
+						clean_command='zypper clean --all'
 					fi
 					;;
 
@@ -547,25 +606,47 @@ install_packages()
 			;;
 	esac
 
+	local missing_collections
 	local missing_packages
 	local added_packages
 	local ported_packages
 	local version_operator
 
 	if [ "${category}" = "${CATEGORIES_SYSTEM}" ]; then
+		missing_collections=''
 		missing_packages=''
 		added_packages=''
 		ported_packages=''
 		version_operator='='
 
 		for package in "$@" ; do
+			local is_collection
+			case ${package} in
+				(@*)
+					is_collection='true'
+
+					if ! [ "${OPERATING_SYSTEM_NAME}" = "${OS_NAMES_FEDORA}" ]; then
+						package=$(echo "${package}" | sed 's/^@//g')
+					fi
+					;;
+
+				(*)
+					is_collection='false'
+					;;
+			esac
+
 			if [ "${manual_installation}" = 'true' ]; then
 				local package_name
 				package_name=$(extract_substring "${package}" "${version_operator}" '1')
 
-				if ${search_command} "${package_name}" ; then
+				if ${search_command} "${package_name}" "${is_collection}" ; then
 					continue
 				fi
+			fi
+
+			if [ "${is_collection}" = 'true' ]; then
+				missing_collections="${missing_collections} ${package}"
+				continue
 			fi
 
 			case ${package} in
@@ -584,6 +665,7 @@ install_packages()
 		done
 
 	elif [ "${category}" = "${CATEGORIES_PYTHON}" ]; then
+		missing_collections=''
 		added_packages=''
 		ported_packages=''
 		version_operator='=='
@@ -609,7 +691,7 @@ install_packages()
 		throw_error "${MESSAGES_INVALID_CATEGORY}" "${category}"
 	fi
 
-	if [ -n "${missing_packages}" ]; then
+	if [ -n "${missing_packages}" ] || [ -n "${missing_collections}" ]; then
 		if [ "${manual_installation}" = 'true' ]; then
 			if [ "${category}" = "${CATEGORIES_SYSTEM}" ]; then
 				echo 'main'
@@ -623,8 +705,12 @@ install_packages()
 				echo "${refresh_command}"
 			fi
 
+			if [ -n "${missing_collections}" ]; then
+				echo "${install_collection_command}${missing_collections}"
+			fi
+
 			if [ -n "${missing_packages}" ]; then
-				echo "${install_command}${missing_packages}"
+				echo "${install_package_command}${missing_packages}"
 			fi
 
 			if [ -n "${clean_command}" ]; then
@@ -639,22 +725,39 @@ install_packages()
 				${refresh_command}
 			fi
 
+			if [ -n "${missing_collections}" ]; then
+				${install_collection_command} ${missing_collections}
+			fi
+
 			if [ -n "${missing_packages}" ]; then
-				${install_command} ${missing_packages}
+				${install_package_command} ${missing_packages}
 			fi
 		fi
 	fi
 
 	if [ -n "${added_packages}" ]; then
-		install_added_packages "${manual_installation}" "${refresh_command}" "${install_command}" "${version_operator}" ${added_packages}
+		install_added_packages "${manual_installation}" "${refresh_command}" "${install_package_command}" "${version_operator}" ${added_packages}
 	fi
 
 	if [ -n "${ported_packages}" ]; then
-		install_ported_packages "${manual_installation}" "${refresh_command}" "${install_command}" "${version_operator}" ${ported_packages}
+		install_ported_packages "${manual_installation}" "${refresh_command}" "${install_package_command}" "${version_operator}" ${ported_packages}
 	fi
 
 	if false && [ -n "${clean_command}" ] && [ "${manual_installation}" = 'false' ]; then
 		${clean_command}
+	fi
+
+	local xkbcommon_default_dir="/usr/include/xkbcommon"
+ 	local xkbcommon_alternative_dir="/usr/include/libxkbcommon/xkbcommon"
+	if [ -d "${xkbcommon_alternative_dir}" ] && ! [ -e "${xkbcommon_default_dir}" ]; then
+		link_command="ln --symbolic ${xkbcommon_alternative_dir} ${xkbcommon_default_dir}"
+
+		if [ "${manual_installation}" = 'true' ]; then
+			echo 'other'
+			echo "${link_command}"
+		else
+			${link_command}
+		fi
 	fi
 
 	if [ "${manual_installation}" = 'true' ] && [ "${OPERATING_SYSTEM_FALLBACK}" = 'true' ] && [ "${category}" = "${CATEGORIES_SYSTEM}" ]; then
@@ -682,6 +785,7 @@ install_added_packages()
 	fi
 
 	local packages=''
+	local clean_command=''
 	local clean_files=''
 	for package in "$@" ; do
 		local repository_1
@@ -715,6 +819,12 @@ install_added_packages()
 				keyring_url="https://${repository_2}.asc"
 				;;
 
+			("${OS_NAMES_OPENSUSE_LEAP}")
+				repository_name=$(echo "${repository_1}" | sed 's@/@:@g')
+				repository_url="https://download.opensuse.org/repositories/${repository_name}/openSUSE_${repository_2}/${repository_name}.repo"
+				keyring_url=''
+				;;
+
 			(*)
 				throw_error "${MESSAGES_INVALID_OPERATING_SYSTEM}" "${OPERATING_SYSTEM_NAME}"
 				;;
@@ -725,22 +835,30 @@ install_added_packages()
 		else
 			case ${OPERATING_SYSTEM_NAME} in
 				("${OS_NAMES_DEBIAN}"|"${OS_NAMES_UBUNTU}")
-					local configured='false'
-					local config_files
-					config_files=$(add_apt_repository "${repository_name}" "${repository_url}" "${keyring_url}") && configured='true'
+					adding_command='add_apt_repository'
+					clean_command='rm --force'
+					;;
 
-					if [ "${configured}" = 'false' ]; then
-						print_msg '' "${config_files}"
-						exit 1
-					elif [ -n "${config_files}" ]; then
-						clean_files="${clean_files} ${config_files}"
-					fi
+				("${OS_NAMES_OPENSUSE_LEAP}")
+					adding_command='add_zypper_repository'
+					clean_command='zypper removerepo'
 					;;
 
 				(*)
 					throw_error "${MESSAGES_INVALID_OPERATING_SYSTEM}" "${OPERATING_SYSTEM_NAME}"
 					;;
 			esac
+
+			local configured='false'
+			local config_files
+			config_files=$(${adding_command} "${repository_name}" "${repository_url}" "${keyring_url}") && configured='true'
+
+			if [ "${configured}" = 'false' ]; then
+				print_msg '' "${config_files}"
+				exit 1
+			elif [ -n "${config_files}" ]; then
+				clean_files="${clean_files} ${config_files}"
+			fi
 
 			packages="${packages} ${package_reference}"
 		fi
@@ -752,8 +870,8 @@ install_added_packages()
 			${install_command}${packages}
 		fi
 
-		if [ -n "${clean_files}" ]; then
-			rm --force ${clean_files}
+		if [ -n "${clean_command}" ] && [ -n "${clean_files}" ]; then
+			${clean_command} ${clean_files}
 		fi
 	fi
 }
@@ -778,6 +896,7 @@ install_ported_packages()
 	fi
 
 	local packages=''
+	local clean_command='rm --force'
 	local clean_files=''
 	for package in "$@" ; do
 		local repository_name
@@ -869,8 +988,8 @@ install_ported_packages()
 			${install_command}${packages}
 		fi
 
-		if [ -n "${clean_files}" ]; then
-			rm --force ${clean_files}
+		if [ -n "${clean_command}" ] && [ -n "${clean_files}" ]; then
+			${clean_command} ${clean_files}
 		fi
 	fi
 }

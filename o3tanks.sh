@@ -193,6 +193,10 @@ build_image()
 			os_image="archlinux"
 			;;
 
+		("${OS_NAMES_OPENSUSE_LEAP}")
+			os_image=$(echo "${OPERATING_SYSTEM_NAME}" | awk 'gsub("-", "/", $0)')
+			;;
+
 		(*)
 			os_image="${OPERATING_SYSTEM_NAME}"
 			;;
@@ -216,7 +220,7 @@ build_image()
 			locale='C.UTF-8'
 			;;
 
-		("${OS_NAMES_FEDORA}")
+		("${OS_NAMES_FEDORA}"|"${OS_NAMES_OPENSUSE_LEAP}")
 			locale='C.utf8'
 			;;
 
@@ -521,6 +525,7 @@ init_globals()
 	readonly OS_NAMES_ARCH='arch'
 	readonly OS_NAMES_DEBIAN='debian'
 	readonly OS_NAMES_FEDORA='fedora'
+	readonly OS_NAMES_OPENSUSE_LEAP='opensuse-leap'
 	readonly OS_NAMES_UBUNTU='ubuntu'
 
 	readonly SHORT_OPTION_PROJECT='p'

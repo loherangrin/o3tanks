@@ -59,6 +59,8 @@ class ContainerClient(abc.ABC):
 
 		if OPERATING_SYSTEM.name is LinuxOSNames.ARCH:
 			os_image = "archlinux"
+		elif OPERATING_SYSTEM.name is LinuxOSNames.OPENSUSE_LEAP:
+			os_image = OPERATING_SYSTEM.name.value.replace('-', '/')
 		else:
 			os_image = OPERATING_SYSTEM.name.value
 
@@ -69,7 +71,7 @@ class ContainerClient(abc.ABC):
 			locale = "en_US.utf8"
 		elif OPERATING_SYSTEM.name in [ LinuxOSNames.DEBIAN, LinuxOSNames.UBUNTU ]:
 			locale = "C.UTF-8"
-		elif OPERATING_SYSTEM.name is LinuxOSNames.FEDORA:
+		elif OPERATING_SYSTEM.name in [ LinuxOSNames.FEDORA, LinuxOSNames.OPENSUSE_LEAP ]:
 			locale = "C.utf8"
 		else:
 			locale = "POSIX"

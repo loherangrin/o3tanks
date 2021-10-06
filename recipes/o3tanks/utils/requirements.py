@@ -28,6 +28,7 @@ class RequirementCommands:
 		self.ported_system_packages = []
 		self.external_system_packages = {}
 		self.application_packages = []
+		self.other_commands = []
 
 
 	def empty(self):
@@ -35,7 +36,8 @@ class RequirementCommands:
 			len(self.main_system_packages) == 0 and
 			len(self.ported_system_packages) == 0 and
 			len(self.external_system_packages) == 0 and
-			len(self.application_packages) == 0
+			len(self.application_packages) == 0 and
+			len(self.other_commands) == 0
 		)
 
 
@@ -114,6 +116,8 @@ def solve_unmet_requirements():
 						target = commands.ported_system_packages
 					elif line == "external":
 						target = commands.external_system_packages
+					elif line == "other":
+						target = commands.other_commands
 					elif isinstance(target, list):
 						target.append(line)
 					elif isinstance(target, dict):

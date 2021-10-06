@@ -61,6 +61,7 @@ class LinuxOSNames(OSNames):
 	ARCH = "arch"
 	DEBIAN = "debian"
 	FEDORA = "fedora"
+	OPENSUSE_LEAP = "opensuse-leap"
 	UBUNTU = "ubuntu"
 
 
