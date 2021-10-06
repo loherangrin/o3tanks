@@ -344,6 +344,17 @@ is_pkg_package_installed()
 	return 0
 }
 
+is_rpm_package_installed()
+{
+	local package_name="${1}"
+
+	if ! rpm --query "${package_name}" > /dev/null 2>&1; then
+		return 1
+	fi
+
+	return 0
+}
+
 # --- PYTHON FUNCTIONS ---
 
 is_python_module_installed()
@@ -439,6 +450,7 @@ init_globals()
 
 	readonly OS_NAMES_ARCH='arch'
 	readonly OS_NAMES_DEBIAN='debian'
+	readonly OS_NAMES_FEDORA='fedora'
 	readonly OS_NAMES_UBUNTU='ubuntu'
 
 	readonly TMP_DIR="/tmp/o3tanks/packages/external"
@@ -505,6 +517,22 @@ install_packages()
 						refresh_command='apt-get update'
 						install_command='apt-get install --assume-yes --no-install-recommends'
 						clean_command='rm --force --recursive /var/lib/apt/lists/*'
+					fi
+					;;
+
+				("${OS_NAMES_FEDORA}")
+					package_manager='dnf'
+
+					search_command='is_rpm_package_installed'
+					setup_command=''
+					if [ "${manual_installation}" = 'true' ]; then
+						refresh_command=''
+						install_command='dnf install'
+						clean_command=''
+					else
+						refresh_command='dnf makecache'
+						install_command='dnf install --assumeyes --nodocs --setopt install_weak_deps=false'
+						clean_command='dnf clean all'
 					fi
 					;;
 

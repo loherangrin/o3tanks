@@ -60,6 +60,7 @@ class OSNames(ObjectEnum):
 class LinuxOSNames(OSNames):
 	ARCH = "arch"
 	DEBIAN = "debian"
+	FEDORA = "fedora"
 	UBUNTU = "ubuntu"
 
 

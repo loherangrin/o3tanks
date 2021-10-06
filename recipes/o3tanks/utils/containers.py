@@ -69,6 +69,8 @@ class ContainerClient(abc.ABC):
 			locale = "en_US.utf8"
 		elif OPERATING_SYSTEM.name in [ LinuxOSNames.DEBIAN, LinuxOSNames.UBUNTU ]:
 			locale = "C.UTF-8"
+		elif OPERATING_SYSTEM.name is LinuxOSNames.FEDORA:
+			locale = "C.utf8"
 		else:
 			locale = "POSIX"
 
