@@ -47,6 +47,26 @@ class CfgPropertyKey(typing.NamedTuple):
 	name: str
 
 
+class OSFamilies(ObjectEnum):
+	LINUX = "Linux"
+	MAC = "MacOS"
+	WINDOWS = "Windows"
+
+
+class OSNames(ObjectEnum):
+	pass
+
+
+class LinuxOSNames(OSNames):
+	UBUNTU = "ubuntu"
+
+
+class OperatingSystem(typing.NamedTuple):
+	family: OSFamilies
+	name: OSNames
+	version: str
+
+
 class Repository(typing.NamedTuple):
 	url: str
 	branch: str = None

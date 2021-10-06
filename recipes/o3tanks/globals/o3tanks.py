@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from ..utils.types import AutoEnum, CfgPropertyKey, ObjectEnum, User
+from ..utils.types import CfgPropertyKey, LinuxOSNames, ObjectEnum, OperatingSystem, OSFamilies, User
 import os
 import pathlib
 import platform
@@ -73,12 +73,6 @@ class Images(ObjectEnum):
 	INSTALL_RUNNER = "install-runner"
 	RUNNER = "runner"
 	UPDATER = "updater"
-
-
-class OperatingSystems(ObjectEnum):
-	LINUX = "Linux"
-	MAC = "MacOS"
-	WINDOWS = "Windows"
 
 
 class LongOptions(ObjectEnum):
@@ -150,15 +144,49 @@ def init_from_env(env_name, env_type, default_value):
 
 
 def get_os():
-	current_os = platform.system()
-	if current_os == "Linux":
-		return OperatingSystems.LINUX
-	elif current_os == "Darwin":
-		return OperatingSystems.MAC
-	elif current_os == "Windows":
-		return OperatingSystems.WINDOWS
+	os_family_name = platform.system()
+
+	if os_family_name == "Linux":
+		os_family = OSFamilies.LINUX
+
+		if RUN_CONTAINERS:
+			env_value = os.environ.get("O3TANKS_CONTAINER_OS")
+
+			if env_value is not None:
+				delimiter = ':'
+				if delimiter in env_value:
+					substring_1, substring_2 = env_value.split(delimiter, 1)
+				else:
+					substring_1 = env_value
+					substring_2 = ''
+
+				os_name = LinuxOSNames.from_value(substring_1)
+				os_version = substring_2 if (len(substring_2) > 0 and substring_2 != "latest") else None
+
+			else:
+				os_name = LinuxOSNames.UBUNTU
+				os_version = "20.04"
+
+		else:
+			os_name = None
+			os_version = None
+
+	elif os_family_name == "Darwin":
+		os_family = OSFamilies.MAC
+		os_name = None
+		os_version = None
+
+	elif os_family_name == "Windows":
+		os_family = OSFamilies.WINDOWS
+		os_name = None
+		os_version = None
+
 	else:
-		return None
+		os_family = None
+		os_name = None
+		os_version = None
+
+	return OperatingSystem(os_family, os_name, os_version)
 
 
 def get_default_root_dir():
@@ -171,13 +199,13 @@ def get_default_data_dir(operating_system):
 	if RUN_CONTAINERS:
 		return None
 
-	if operating_system is OperatingSystems.LINUX:
+	if operating_system.family is OSFamilies.LINUX:
 		data_dir = pathlib.PosixPath.home() / ".local" / "share"
 
-	elif operating_system is OperatingSystems.MAC:
+	elif operating_system.family is OSFamilies.MAC:
 		data_dir = pathlib.PosixPath.home() / "Library" / "Application Support"
 
-	elif operating_system is OperatingSystems.WINDOWS:
+	elif operating_system.family is OSFamilies.WINDOWS:
 		data_dir = pathlib.WindowsPath(os.environ["LOCALAPPDATA"])
 
 	else:

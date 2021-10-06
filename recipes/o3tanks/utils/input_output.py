@@ -386,7 +386,7 @@ def get_message_text(message_id, *args, **kwargs):
 	elif message_id == Messages.MISSING_MODULE:
 		message_text = "Unable to find '{0}' module.\nPlease add it to your Python installation using:\npython -m pip install {0}"
 	elif message_id == Messages.MISSING_PACKAGES:
-		message_text = "At least one dependency to build and/or run O3DE engine is missing.\nPlease review and execute the following instructions to fix it."
+		message_text = "At least one dependency to use O3DE engine is missing.\nPlease review and execute the following steps to fix the issue."
 	elif message_id == Messages.MISSING_PYTHON:
 		message_text = "Unable to find a valid Python 3 installation"
 	elif message_id == Messages.MISSING_PROJECT:

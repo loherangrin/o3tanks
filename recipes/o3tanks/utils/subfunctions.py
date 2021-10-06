@@ -13,10 +13,10 @@
 # limitations under the License.
 
 
-from ..globals.o3tanks import OPERATING_SYSTEM, PRIVATE_PROJECT_SETTINGS_PATH, PUBLIC_PROJECT_SETTINGS_PATH, EngineSettings, OperatingSystems
+from ..globals.o3tanks import OPERATING_SYSTEM, PRIVATE_PROJECT_SETTINGS_PATH, PUBLIC_PROJECT_SETTINGS_PATH, EngineSettings
 from .filesystem import read_cfg_property
 from .input_output import Messages, throw_error
-from .types import CfgPropertyKey, Repository, RepositoryResult, RepositoryResultType
+from .types import CfgPropertyKey, OSFamilies, Repository, RepositoryResult, RepositoryResultType
 import pathlib
 import re
 
@@ -51,44 +51,44 @@ def get_engine_repository_from_source(source_dir):
 
 
 def get_binary_filename(name):
-	if OPERATING_SYSTEM is OperatingSystems.LINUX:
+	if OPERATING_SYSTEM.family is OSFamilies.LINUX:
 		return name
 
-	elif OPERATING_SYSTEM is OperatingSystems.MAC:
+	elif OPERATING_SYSTEM.family is OSFamilies.MAC:
 		return pathlib.PurePosixPath("{0}.app/Contents/MacOS/{0}".format(name))
 
-	elif OPERATING_SYSTEM is OperatingSystems.WINDOWS:
+	elif OPERATING_SYSTEM.family is OSFamilies.WINDOWS:
 		return "{}.exe".format(name)
 
 	else:
-		throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM)
+		throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM.family)
 
 
 def get_library_filename(name):
-	if OPERATING_SYSTEM is OperatingSystems.LINUX:
+	if OPERATING_SYSTEM.family is OSFamilies.LINUX:
 		extension = "so"
 
-	elif OPERATING_SYSTEM is OperatingSystems.MAC:
+	elif OPERATING_SYSTEM.family is OSFamilies.MAC:
 		extension = "dylib"
 
-	elif OPERATING_SYSTEM is OperatingSystems.WINDOWS:
+	elif OPERATING_SYSTEM.family is OSFamilies.WINDOWS:
 		extension =  "dll"
 
 	else:
-		throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM)
+		throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM.family)
 
 	return "{}.{}".format(name, extension)
 
 
 def get_script_filename(name):
-	if OPERATING_SYSTEM in [ OperatingSystems.LINUX, OperatingSystems.MAC ]:
+	if OPERATING_SYSTEM.family in [ OSFamilies.LINUX, OSFamilies.MAC ]:
 		extension = "sh"
 
-	elif OPERATING_SYSTEM is OperatingSystems.WINDOWS:
+	elif OPERATING_SYSTEM.family is OSFamilies.WINDOWS:
 		extension =  "bat"
 
 	else:
-		throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM)
+		throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM.family)
 
 	return "{}.{}".format(name, extension)
 

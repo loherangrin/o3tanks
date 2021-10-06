@@ -13,9 +13,9 @@
 # limitations under the License.
 
 
-from ..globals.o3tanks import GPU_DRIVER_NAME, OPERATING_SYSTEM, RUN_CONTAINERS, GPUDrivers, Images, OperatingSystems, get_real_bin_file
+from ..globals.o3tanks import GPU_DRIVER_NAME, OPERATING_SYSTEM, RUN_CONTAINERS, GPUDrivers, Images, get_real_bin_file
 from .input_output import Level, Messages, print_msg, throw_error
-from .types import ObjectEnum
+from .types import ObjectEnum, OSFamilies
 import subprocess
 
 
@@ -83,7 +83,7 @@ def solve_unmet_requirements():
 
 	commands = RequirementCommands()
 
-	if OPERATING_SYSTEM is OperatingSystems.LINUX:
+	if OPERATING_SYSTEM.family is OSFamilies.LINUX:
 		packages_dir = get_real_bin_file().parent / "recipes" / "packages"
 		package_manager_file = packages_dir / "package_manager.sh"
 
@@ -128,13 +128,13 @@ def solve_unmet_requirements():
 				for line in output_lines:
 					commands.application_packages.append(line)
 
-	elif OPERATING_SYSTEM is OperatingSystems.MAC:
+	elif OPERATING_SYSTEM.family is OSFamilies.MAC:
 		pass
 
-	elif OPERATING_SYSTEM is OperatingSystems.WINDOWS:
+	elif OPERATING_SYSTEM.family is OSFamilies.WINDOWS:
 		pass
 	
 	else:
-		throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM)
+		throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM.family)
 
 	return commands

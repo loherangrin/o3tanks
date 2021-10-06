@@ -113,30 +113,62 @@ throw_error()
 add_apt_repository()
 {
 	local repository_name="${1}"
-	local repository_url="https://${2}"
+	local repository_url="${2}"
+	local keyring_url="${3}"
 
 	local source_file="/etc/apt/sources.list.d/${repository_name}.list"
 	if [ -f "${source_file}" ]; then
 		return 0
 	fi
 
-	local prerequisite='ca-certificates'
-	if ! is_apt_package_installed "${prerequisite}"; then
-		apt-get update
-		apt-get install -y --no-install-recommends \
-			"${prerequisite}"
+	local keyring_name="${repository_name}-archive-keyring.gpg"
+	local keyring_file="/usr/share/keyrings/${keyring_name}"
+
+	if ! [ -f "${keyring_file}" ]; then
+		if ! [ -f "${TMP_DIR}/${keyring_name}" ]; then
+			apt-get update > /dev/null
+			apt-get install -y --no-install-recommends \
+				ca-certificates \
+				gnupg \
+				wget \
+			> /dev/null
+
+			if ! [ -d "${TMP_DIR}" ]; then
+				mkdir --parents "${TMP_DIR}"
+			fi
+
+			wget \
+				--output-document - \
+				"${keyring_url}" \
+			| gpg --dearmor - > "${TMP_DIR}/${keyring_name}"
+
+			if ! [ -f "${TMP_DIR}/${keyring_name}" ]; then
+				throw_error "${MESSAGES_MISSING_KEYRING}" "${TMP_DIR}/${keyring_name}" "${repository_url}"
+			fi
+		fi
+
+		if [ "${INSTALL_EXTERNAL_PACKAGES}" = 'false' ]; then
+			return 0
+		fi
+
+		mv "${TMP_DIR}/${keyring_name}" "${keyring_file}"
 	fi
 
-	local keyring_file="/usr/share/keyrings/${repository_name}-archive-keyring.gpg"
-	if ! [ -f "${keyring_file}" ]; then
-		throw_error "${MESSAGES_MISSING_KEYRING}" "${keyring_file}" "${repository_url}"
+	if [ "${INSTALL_EXTERNAL_PACKAGES}" = 'false' ]; then
+		return 0
 	fi
+
+	apt-get update  > /dev/null
+	apt-get install -y --no-install-recommends \
+		ca-certificates \
+	 > /dev/null
 
 	echo \
 		"deb [signed-by=${keyring_file}] ${repository_url} ${OPERATING_SYSTEM_CODENAME} main" \
 	> "${source_file}"
 
-	echo "${source_file}"
+	echo "${source_file} ${keyring_file}"
+	return 0
 }
 
 is_apt_package_installed()
@@ -158,51 +190,56 @@ port_apt_package()
 	local repository="${1}"
 	local package="${2}"
 
+	if [ "${OPERATING_SYSTEM_CODENAME}" = "${repository}" ] || [ "${INSTALL_EXTERNAL_PACKAGES}" = 'false' ]; then
+		return 0
+	fi
+
 	local generated_files
-	local other_source_file="/etc/apt/sources.list.d/${repository}.list"
-	if ! [ -f "${other_source_file}" ]; then
+	local external_source_file="/etc/apt/sources.list.d/${repository}.list"
+	if ! [ -f "${external_source_file}" ]; then
 		local main_source_file="/etc/apt/sources.list"
 
-		cp "${main_source_file}" "${other_source_file}"
-		sed --in-place "s/${OPERATING_SYSTEM_CODENAME}/${repository}/g" "${other_source_file}"
+		cp "${main_source_file}" "${external_source_file}"
+		sed --in-place "s/${OPERATING_SYSTEM_CODENAME}/${repository}/g" "${external_source_file}"
 
-		generated_files="${other_source_file}"
+		generated_files="${external_source_file}"
 	else
 		generated_files=''
 	fi
 
-	local pinning_file="/etc/apt/preferences.d/${repository}"
+	local external_pinning_file="/etc/apt/preferences.d/${repository}"
 	
 	local is_first_pin
-	local tmp_pinning_file="${pinning_file}"
-	if ! [ -f "${pinning_file}" ]; then
+	local tmp_external_pinning_file="${external_pinning_file}"
+	if ! [ -f "${external_pinning_file}" ]; then
 		is_first_pin='true'
 	else
 		is_first_pin='false'
-		tmp_pinning_file="${tmp_pinning_file}.tmp"
+		tmp_external_pinning_file="${tmp_external_pinning_file}.tmp"
 	fi
 
-	echo \
-			"Package: ${package}\n" \
-			"Pin: release n=${repository}\n" \
-			'Pin-Priority: 990\n' \
-			'' \
-		> "${tmp_pinning_file}"
+	cat <<-EOF > "${tmp_external_pinning_file}"
+		Package: ${package}
+		Pin: release n=${repository}
+		Pin-Priority: 990
+
+		EOF
 	
 	if [ "${is_first_pin}" = 'true' ]; then
-		echo \
-				'Package: *\n' \
-				"Pin: release n=${repository}\n" \
-				'Pin-Priority: -1\n' \
-			>> "${pinning_file}"
+		cat <<-EOF >> "${external_pinning_file}"
+			Package: *
+			Pin: release n=${repository}
+			Pin-Priority: -1
+			EOF
 
-		generated_files="${generated_files} ${pinning_file}"
+		generated_files="${generated_files} ${external_pinning_file}"
 	else
-		cat "${pinning_file}" >> "${tmp_pinning_file}"
-		mv "${tmp_pinning_file}" "${pinning_file}"
+		cat "${external_pinning_file}" >> "${tmp_external_pinning_file}"
+		mv "${tmp_external_pinning_file}" "${external_pinning_file}"
 	fi
 
 	echo "${generated_files}"
+	return 0
 }
 
 # --- PYTHON FUNCTIONS ---
@@ -296,7 +333,9 @@ init_globals()
 
 	OPERATING_SYSTEM_FALLBACK='false'
 
-	readonly OPERATING_SYSTEMS_UBUNTU='ubuntu'
+	readonly OS_NAMES_UBUNTU='ubuntu'
+
+	readonly TMP_DIR="/tmp/o3tanks/packages/external"
 }
 
 install_packages()
@@ -306,7 +345,6 @@ install_packages()
 	shift
 	shift
 
-	local os_architecture
 	local package_manager
 
 	local search_command
@@ -331,8 +369,7 @@ install_packages()
 
 		("${CATEGORIES_SYSTEM}")
 			case ${OPERATING_SYSTEM_NAME} in
-				("${OPERATING_SYSTEMS_UBUNTU}")
-					os_architecture=$(dpkg --print-architecture)
+				("${OS_NAMES_UBUNTU}")
 					package_manager='apt'
 
 					search_command='is_apt_package_installed'
@@ -344,7 +381,7 @@ install_packages()
 					else
 						setup_command='export DEBIAN_FRONTEND=noninteractive'
 						refresh_command='apt-get update'
-						install_command='apt-get install -y --no-install-recommends'
+						install_command='apt-get install --assume-yes --no-install-recommends'
 						clean_command='rm --force --recursive /var/lib/apt/lists/*'
 					fi
 					;;
@@ -436,7 +473,9 @@ install_packages()
 				echo "${refresh_command}"
 			fi
 
-			echo "${install_command}${missing_packages}"
+			if [ -n "${missing_packages}" ]; then
+				echo "${install_command}${missing_packages}"
+			fi
 
 			if [ -n "${clean_command}" ]; then
 				echo "${clean_command}"
@@ -450,7 +489,9 @@ install_packages()
 				${refresh_command}
 			fi
 
-			${install_command} ${missing_packages}
+			if [ -n "${missing_packages}" ]; then
+				${install_command} ${missing_packages}
+			fi
 		fi
 	fi
 
@@ -462,11 +503,11 @@ install_packages()
 		install_ported_packages "${manual_installation}" "${refresh_command}" "${install_command}" "${version_operator}" ${ported_packages}
 	fi
 
-	if [ -n "${clean_command}" ] && [ "${manual_installation}" = 'false' ]; then
+	if false && [ -n "${clean_command}" ] && [ "${manual_installation}" = 'false' ]; then
 		${clean_command}
 	fi
 
-	if [ "${OPERATING_SYSTEM_FALLBACK}" = 'true' ] && [ "${category}" = "${CATEGORIES_SYSTEM}" ]; then
+	if [ "${manual_installation}" = 'true' ] && [ "${OPERATING_SYSTEM_FALLBACK}" = 'true' ] && [ "${category}" = "${CATEGORIES_SYSTEM}" ]; then
 		echo 'fallback'
 	fi
 }
@@ -493,16 +534,16 @@ install_added_packages()
 	local packages=''
 	local clean_files=''
 	for package in "$@" ; do
-		local repository_name
-		repository_name=$(extract_substring "${package}" ':' '2')
+		local repository_1
+		repository_1=$(extract_substring "${package}" ':' '2')
 		
-		local repository_url
-		repository_url=$(extract_substring "${package}" ':' '3')
+		local repository_2
+		repository_2=$(extract_substring "${package}" ':' '3')
 
 		local package_name
 		package_name=$(extract_substring "${package}" "${version_operator}" '1')
 
-		if [ -z "${repository_name}" ] || [ -z "${repository_url}" ] || [ -z "${package_name}" ]; then
+		if [ -z "${repository_1}" ] || [ -z "${repository_2}" ] || [ -z "${package_name}" ]; then
 			throw_error "${MESSAGES_INVALID_EXTERNAL_REPOSITORY}" "${package}"
 		fi
 
@@ -514,22 +555,29 @@ install_added_packages()
 			package_reference="${package_reference}${version_operator}${package_version}"
 		fi
 
-		if [ "${manual_installation}" = 'true' ]; then
-			case ${OPERATING_SYSTEM_NAME} in
-				("${OPERATING_SYSTEMS_UBUNTU}")
-					echo "https://${repository_url} ${install_command} ${package_reference}"
-					;;
+		local repository_name
+		local repository_url
+		local keyring_url
+		case ${OPERATING_SYSTEM_NAME} in
+			("${OS_NAMES_UBUNTU}")
+				repository_name=$(echo "${repository_1}" | sed 's@[/\.]@_@g')
+				repository_url="https://${repository_1}"
+				keyring_url="https://${repository_2}.asc"
+				;;
 
-				(*)
-					throw_error "${MESSAGES_INVALID_OPERATING_SYSTEM}" "${OPERATING_SYSTEM_NAME}"
-					;;
-			esac
+			(*)
+				throw_error "${MESSAGES_INVALID_OPERATING_SYSTEM}" "${OPERATING_SYSTEM_NAME}"
+				;;
+		esac
+
+		if [ "${manual_installation}" = 'true' ]; then
+			echo "${repository_url} ${install_command} ${package_reference}"
 		else
 			case ${OPERATING_SYSTEM_NAME} in
-				("${OPERATING_SYSTEMS_UBUNTU}")
+				("${OS_NAMES_UBUNTU}")
 					local configured='false'
 					local config_files
-					config_files=$(add_apt_repository "${repository_name}" "${repository_url}") && configured='true'
+					config_files=$(add_apt_repository "${repository_name}" "${repository_url}" "${keyring_url}") && configured='true'
 
 					if [ "${configured}" = 'false' ]; then
 						print_msg '' "${config_files}"
@@ -548,9 +596,11 @@ install_added_packages()
 		fi
 	done
 
-	if [ "${manual_installation}" = 'false' ]; then
-		${refresh_command}
-		${install_command}${packages}
+	if [ "${manual_installation}" = 'false' ] && [ "${INSTALL_EXTERNAL_PACKAGES}" = 'true' ]; then
+		if [ -n "${packages}" ]; then
+			${refresh_command}
+			${install_command}${packages}
+		fi
 
 		if [ -n "${clean_files}" ]; then
 			rm --force ${clean_files}
@@ -595,8 +645,8 @@ install_ported_packages()
 
 		if [ "${manual_installation}" = 'true' ]; then
 			case ${OPERATING_SYSTEM_NAME} in
-				("${OPERATING_SYSTEMS_UBUNTU}")
-					echo "https://packages.ubuntu.com/${repository_name}/${os_architecture}/${package_name}/download"
+				("${OS_NAMES_UBUNTU}")
+					echo "https://packages.ubuntu.com/${repository_name}/${package_name}"
 					;;
 
 				(*)
@@ -605,7 +655,7 @@ install_ported_packages()
 			esac
 		else
 			case ${OPERATING_SYSTEM_NAME} in
-				("${OPERATING_SYSTEMS_UBUNTU}")
+				("${OS_NAMES_UBUNTU}")
 					local configured='false'
 					local config_files
 					config_files=$(port_apt_package "${repository_name}" "${package_name}") && configured='true'
@@ -630,9 +680,11 @@ install_ported_packages()
 		fi
 	done
 
-	if [ "${manual_installation}" = 'false' ]; then
-		${refresh_command}
-		${install_command}${packages}
+	if [ "${manual_installation}" = 'false' ] && [ "${INSTALL_EXTERNAL_PACKAGES}" = 'true' ]; then
+		if [ -n "${packages}" ]; then
+			${refresh_command}
+			${install_command}${packages}
+		fi
 
 		if [ -n "${clean_files}" ]; then
 			rm --force ${clean_files}
@@ -742,9 +794,18 @@ main()
 				manual_installation='false'
 			fi
 
-			local default_os_name="${OPERATING_SYSTEMS_UBUNTU}"
+			local default_os_name="${OS_NAMES_UBUNTU}"
 			local default_os_version="20.04"
 			local default_os_codename="focal"
+
+			local install_external_packages
+			if [ "${1}" = '--no-external' ]; then
+				install_external_packages='false'
+				shift
+			else
+				install_external_packages='true'
+			fi
+			readonly INSTALL_EXTERNAL_PACKAGES="${install_external_packages}"
 
 			local category="${1}"
 			while true ; do
