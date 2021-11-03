@@ -101,7 +101,7 @@ def open_project(config):
 
 
 def run_project(binary, config):
-	project_name = read_json_property(O3DE_PROJECT_SOURCE_DIR / "project.json", "project_name")
+	project_name = read_json_property(O3DE_PROJECT_SOURCE_DIR / "project.json", JsonPropertyKey(None, None, "project_name"))
 	if project_name is None:
 		throw_error(Messages.INVALID_PROJECT_NAME)
 

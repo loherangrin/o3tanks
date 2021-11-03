@@ -14,7 +14,7 @@
 
 
 from .input_output import Messages, throw_error
-from .types import ObjectEnum
+from .types import JsonPropertyKey, ObjectEnum
 import configparser
 import json
 import shutil
@@ -120,13 +120,45 @@ def read_json_property(file, key):
 	if not file.is_file():
 		return None
 
-	data = json.loads(file.read_bytes())
+	with file.open('rt') as file_handler:
+		try:
+			data = json.load(file_handler)
 
-	value = data.get(key)
-	if len(value) == 0:
-		value = None
+		except json.decoder.JSONDecodeError as error:
+			throw_error(Messages.INVALID_SETTING_DATA, file, error)
 
-	return value
+	if isinstance(key, ObjectEnum):
+		key = key.value
+	if (data is not None) and key.section is not None:
+		if not isinstance(data, dict):
+			throw_error(Messages.INVALID_PROPERTY_KEY, key.print(), "dict")
+
+		data = data.get(key.section)
+
+	if (data is not None) and key.index is not None:
+		if not key.is_any():
+			if not isinstance(data, list):
+				throw_error(Messages.INVALID_PROPERTY_KEY, key.print(), "list")
+
+			data = data[key.index] if key.index < len(data) else None
+
+		else:
+			data = None
+
+	if (data is not None) and key.name is not None:
+		if not isinstance(data, dict):
+			throw_error(Messages.INVALID_PROPERTY_KEY, key.print(), "dict")
+
+		data = data.get(key.name)
+
+	if (data is not None) and (
+		(isinstance(data, str) and len(data.strip()) == 0) or
+		(isinstance(data, list) and len(data) == 0) or
+		(isinstance(data, dict) and len(data) == 0)
+	):
+		data = None
+
+	return data
 
 
 def write_cfg_property(file, key, value):
@@ -157,3 +189,106 @@ def write_cfg_property(file, key, value):
 	if do_write:
 		with file.open('wt') as file_handler:
 			cfg.write(file_handler)
+
+
+def write_json_property(file, key, value, sort_keys = True):
+	if (key.section is None) and (key.name is None):
+		throw_error(Messages.MISSING_PROPERTY)
+
+	data = read_json_property(file, JsonPropertyKey(None, None, None))
+	if data is None:
+		data = {}
+	elif not isinstance(data, dict):
+		throw_error(Messages.INVALID_PROPERTY_KEY, key.print(), "dict")
+
+	if key.section is None:
+		if value is not None:
+			if isinstance(value, dict) or isinstance(value, list):
+				throw_error(Messages.INVALID_PROPERTY_VALUE, key.print(), "literal")
+
+			data[key.name] = value
+
+		else:
+			if not key.name in data:
+				return
+			del data[key.name]
+
+	else:
+		if isinstance(key, ObjectEnum):
+			key = key.value
+
+		if key.index is not None:
+			if not key.section in data:
+				if value is None:
+					return
+				data[key.section] = []
+			elif not isinstance(data[key.section], list):
+				throw_error(Messages.INVALID_PROPERTY_KEY, key.print(), "list")
+
+			n_section = len(data[key.section])
+			if key.index < 0:
+				if value is None:
+					return
+				key = JsonPropertyKey(key.section, n_section, key.name)
+				data[key.section].append({})
+			elif key.index >= len(data[key.section]):
+				if value is None:
+					throw_error(Messages.INVALID_PROPERTY_INDEX, key.print(), n_section)
+				while(key.index >= len(data[key.section])):
+					data[key.section].append({})
+			elif not isinstance(data[key.section][key.index], dict):
+				throw_error(Messages.INVALID_PROPERTY_KEY, key.print(), "dict")
+
+			if key.name is not None:
+				if value is not None:
+					if isinstance(value, dict) or isinstance(value, list):
+						throw_error(Messages.INVALID_PROPERTY_VALUE, key.print(), "literal")
+					data[key.section][key.index][key.name] = value
+				else:
+					if not key.name in data[key.section][key.index]:
+						return
+					del data[key.section][key.index][key.name]
+			else:
+				if value is not None:
+					if not isinstance(value, dict):
+						throw_error(Messages.INVALID_PROPERTY_VALUE, key.print(), "dict")
+					data[key.section][key.index] = value
+				else:
+					if key.index >= len(data[key.section]):
+						return
+					del data[key.section][key.index]
+
+		elif (key.name is not None):
+			if not key.section in data:
+				if value is None:
+					return
+				data[key.section] = {}
+			elif not isinstance(data[key.section], dict):
+				throw_error(Messages.INVALID_PROPERTY_KEY, key.print(), "dict")
+
+			if value is not None:
+				if isinstance(value, dict) or isinstance(value, list):
+					throw_error(Messages.INVALID_PROPERTY_VALUE, key.print(), "literal")
+				data[key.section][key.name] = value
+			else:
+				if not key.name in data[key.section]:
+					return
+				del data[key.section][key.name]
+		else:
+			if value is not None:
+				if not (isinstance(value, dict) or isinstance(value, list)):
+					throw_error(Messages.INVALID_PROPERTY_VALUE, key.print(), "literal")
+				data[key.section] = value
+			else:
+				if not key.section in data:
+					return
+				del data[key.section]
+
+	if len(data) == 0 and (value is not None):
+		return
+
+	if not file.parent.exists():
+		file.parent.mkdir(parents = True)
+
+	with file.open('wt') as file_handler:
+		json.dump(data, file_handler, indent = 4, sort_keys = sort_keys)

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from ..utils.types import CfgPropertyKey, LinuxOSNames, ObjectEnum, OperatingSystem, OSFamilies, User
+from ..utils.types import JsonPropertyKey, LinuxOSNames, ObjectEnum, OperatingSystem, OSFamilies, User
 import os
 import pathlib
 import platform
@@ -110,10 +110,10 @@ class Settings(ObjectEnum):
 	ENGINE = "engine"
 
 class EngineSettings(ObjectEnum):
-	VERSION = CfgPropertyKey(Settings.ENGINE.value, "id")
-	REPOSITORY = CfgPropertyKey(Settings.ENGINE.value, "repository")
-	BRANCH = CfgPropertyKey(Settings.ENGINE.value, "branch")
-	REVISION = CfgPropertyKey(Settings.ENGINE.value, "revision")
+	VERSION = JsonPropertyKey(Settings.ENGINE.value, None, "id")
+	REPOSITORY = JsonPropertyKey(Settings.ENGINE.value, None, "repository")
+	BRANCH = JsonPropertyKey(Settings.ENGINE.value, None, "branch")
+	REVISION = JsonPropertyKey(Settings.ENGINE.value, None, "revision")
 
 
 class Targets(ObjectEnum):
@@ -228,8 +228,8 @@ OPERATING_SYSTEM = get_os()
 PROJECT_EXTRA_PATH = pathlib.PurePath(".o3tanks")
 PUBLIC_PROJECT_EXTRA_PATH = PROJECT_EXTRA_PATH / "public"
 PRIVATE_PROJECT_EXTRA_PATH = PROJECT_EXTRA_PATH / "private"
-PUBLIC_PROJECT_SETTINGS_PATH = PUBLIC_PROJECT_EXTRA_PATH / "settings.cfg"
-PRIVATE_PROJECT_SETTINGS_PATH = PRIVATE_PROJECT_EXTRA_PATH / "settings.cfg"
+PUBLIC_PROJECT_SETTINGS_PATH = PUBLIC_PROJECT_EXTRA_PATH / "settings.json"
+PRIVATE_PROJECT_SETTINGS_PATH = PRIVATE_PROJECT_EXTRA_PATH / "settings.json"
 
 USER_NAME = "user"
 USER_GROUP = USER_NAME

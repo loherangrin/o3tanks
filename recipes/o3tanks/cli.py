@@ -55,26 +55,27 @@ def get_all_engine_versions():
 
 
 def get_engine_repository_from_project(project_dir):
-	settings_file = select_project_settings_file(project_dir, EngineSettings.REPOSITORY)
-	repository = read_cfg_properties(settings_file, EngineSettings.REPOSITORY, EngineSettings.BRANCH, EngineSettings.REVISION)
+	settings_file = select_project_settings_file(project_dir, EngineSettings.REPOSITORY.value)
+	repository = read_json_property(settings_file, JsonPropertyKey(Settings.ENGINE.value, None, None))
 
-	if not EngineSettings.REPOSITORY.value in repository:
+	if (repository is None) or not (EngineSettings.REPOSITORY.value.name in repository):
 		return RepositoryResult(RepositoryResultType.NOT_FOUND)
 
-	if (EngineSettings.BRANCH.value in repository) and (EngineSettings.REVISION.value in repository):
+	if (EngineSettings.BRANCH.value.name in repository) and (EngineSettings.REVISION.value.name in repository):
 		return RepositoryResult(RepositoryResultType.INVALID)
+
 	return RepositoryResult(
 		RepositoryResultType.OK,
 		Repository(
-			repository[EngineSettings.REPOSITORY.value],
-			repository.get(EngineSettings.BRANCH.value),
-			repository.get(EngineSettings.REVISION.value)
+			repository[EngineSettings.REPOSITORY.value.name],
+			repository.get(EngineSettings.BRANCH.value.name),
+			repository.get(EngineSettings.REVISION.value.name)
 		)
 	)
 
 
 def get_engine_version_from_project(project_dir):
-	engine_version = read_cfg_property(project_dir / PRIVATE_PROJECT_SETTINGS_PATH, EngineSettings.VERSION)
+	engine_version = read_json_property(project_dir / PRIVATE_PROJECT_SETTINGS_PATH, EngineSettings.VERSION)
 
 	return engine_version
 
@@ -157,7 +158,7 @@ def select_engine(project_dir):
 		engine_version = search_engine_by_repository(engine_repository)
 
 		if engine_version is not None:
-			run_builder(None, None, project_dir, BuilderCommands.SETTINGS, Targets.PROJECT, EngineSettings.VERSION.value.section, EngineSettings.VERSION.value.name, engine_version, False, True)
+			run_builder(None, None, project_dir, BuilderCommands.SETTINGS, Targets.PROJECT, EngineSettings.VERSION.value.section, EngineSettings.VERSION.value.index, EngineSettings.VERSION.value.name, engine_version, False, True)
 
 		else:
 			engine_url = engine_repository.url
@@ -176,7 +177,7 @@ def select_engine(project_dir):
 			engine_version = search_engine_by_repository(engine_repository)
 
 			if engine_version is not None:
-				run_builder(None, None, project_dir, BuilderCommands.SETTINGS, Targets.PROJECT, EngineSettings.VERSION.value.section, EngineSettings.VERSION.value.name, engine_version, False, True)
+				run_builder(None, None, project_dir, BuilderCommands.SETTINGS, Targets.PROJECT, EngineSettings.VERSION.value.section, EngineSettings.VERSION.value.index, EngineSettings.VERSION.value.name, engine_version, False, True)
 			else:
 				return EngineResult(EngineResultType.NOT_FOUND)
 
@@ -912,7 +913,7 @@ def install_missing_engine(project_dir, engine_url):
 		else:
 			break
 
-	run_builder(None, None, project_dir, BuilderCommands.SETTINGS, Targets.PROJECT, EngineSettings.VERSION.value.section, EngineSettings.VERSION.value.name, engine_version, False, False)
+	run_builder(None, None, project_dir, BuilderCommands.SETTINGS, Targets.PROJECT, EngineSettings.VERSION.value.section, EngineSettings.VERSION.value.index, EngineSettings.VERSION.value.name, engine_version, False, False)
 
 	check_updater()
 
@@ -1124,8 +1125,8 @@ def clean_project(project_dir, config, force = False):
 	run_builder(engine_version, config, project_dir, BuilderCommands.CLEAN, Targets.PROJECT, config, force)
 
 
-def manage_project_settings(project_dir, setting_key_section , setting_key_name, setting_value, clear):
-	run_builder(None, None, project_dir, BuilderCommands.SETTINGS, Targets.PROJECT, setting_key_section, setting_key_name, setting_value, clear, False)
+def manage_project_settings(project_dir, setting_key_section , setting_key_index, setting_key_name, setting_value, clear):
+	run_builder(None, None, project_dir, BuilderCommands.SETTINGS, Targets.PROJECT, setting_key_section, setting_key_index, setting_key_name, setting_value, clear, False)
 
 
 def open_project(project_dir, engine_config = None, new_engine_version = None):
@@ -1162,7 +1163,7 @@ def open_project(project_dir, engine_config = None, new_engine_version = None):
 			throw_error(Messages.VERSION_NOT_FOUND, engine_version)
 
 	if new_engine_version is not None:
-		run_builder(engine_version, None, project_dir, BuilderCommands.SETTINGS, Targets.PROJECT, Settings.ENGINE.value, None, new_engine_version, False, True)
+		run_builder(engine_version, None, project_dir, BuilderCommands.SETTINGS, Targets.PROJECT, Settings.ENGINE.value, None, None, new_engine_version, False, True)
 
 	editor_library_file = project_dir / "build" / OPERATING_SYSTEM.family.value / "bin" / engine_config.value / get_library_filename("libEditorCore")
 	if not editor_library_file.is_file():
@@ -1479,21 +1480,29 @@ def handle_settings_command(project_path, setting_key, setting_value, clear):
 
 	if setting_key is None:
 		setting_key_section = None
+		setting_key_index = None
 		setting_key_name = None
 	else:
-		matches = re.match(r"^([^\.]+)\.(.+)$", setting_key)
-		if matches is not None:
-			setting_key_section = matches.group(1)
-			setting_key_name = matches.group(2)
-		else:
-			setting_key_section = setting_key
-			setting_key_name = None
-	
+		matches = re.match(r"^([^\[\.]+)(\[([0-9]+)\])?(\.([^\[\.]+))?$", setting_key)
+		if matches is None:
+			throw_error(Messages.INVALID_SETTING_SYNTAX, setting_key)
+
+		setting_key_section = matches.group(1)
+		setting_key_index = matches.group(3)
+		setting_key_name = matches.group(5)
+
+		if (
+			setting_key_section is not None and
+			setting_key_name is None and
+			clear is False
+		):
+			throw_error(Messages.UNSUPPORTED_INSERT_SETTING_SECTION)
+
 	try:
 		check_container_client()
 		check_builder()
 
-		manage_project_settings(project_dir, setting_key_section, setting_key_name, setting_value, clear)
+		manage_project_settings(project_dir, setting_key_section, setting_key_index, setting_key_name, setting_value, clear)
 
 	finally:
 		close_container_client()

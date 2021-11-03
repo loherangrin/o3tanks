@@ -14,9 +14,9 @@
 
 
 from ..globals.o3tanks import OPERATING_SYSTEM, PRIVATE_PROJECT_SETTINGS_PATH, PUBLIC_PROJECT_SETTINGS_PATH, EngineSettings
-from .filesystem import read_cfg_property
+from .filesystem import read_cfg_property, read_json_property
 from .input_output import Messages, throw_error
-from .types import CfgPropertyKey, OSFamilies, Repository, RepositoryResult, RepositoryResultType
+from .types import CfgPropertyKey, JsonPropertyKey, OSFamilies, Repository, RepositoryResult, RepositoryResultType
 import pathlib
 import re
 
@@ -100,10 +100,75 @@ def is_commit(reference):
 	return (re.match(r"^[a-z0-9]{40}$", reference) is not None)
 
 
+def read_project_setting_values(project_dir, setting_section, setting_index):
+	settings_files = [
+		project_dir / PRIVATE_PROJECT_SETTINGS_PATH,
+		project_dir / PUBLIC_PROJECT_SETTINGS_PATH
+	]
+
+	setting_key = JsonPropertyKey(
+		setting_section,
+		setting_index if (setting_index is not None and setting_index >= 0) else None,
+		None
+	)
+
+	setting_values = {}
+	for settings_file in settings_files:
+		values = read_json_property(settings_file, setting_key)
+		if values is None:
+			continue
+
+		elif isinstance(values, list):
+			if not setting_key.section in setting_values:
+				setting_values[setting_key.section] = []
+
+			for index, index_values in enumerate(values):
+				if index < len(setting_values[setting_key.section]):
+					setting_values[setting_key.section][index] = { **setting_values[setting_key.section][index], **index_values }
+				else:
+					setting_values[setting_key.section].append(index_values)
+
+		elif isinstance(values, dict):
+			if setting_key.section is None:
+				for section, section_values in values.items():
+					if not section in setting_values:
+						setting_values[section] = section_values
+					elif isinstance(setting_values[section], dict) or isinstance(section_values, dict):
+						setting_values[section] = { **setting_values[section], **section_values }
+					elif isinstance(setting_values[section], list) or isinstance(section_values, list):
+						n_current_values = len(setting_values[section])
+						n_new_values = len(section_values)
+						n_common_values = min(n_current_values, n_new_values)
+
+						i = 0
+						while i < n_common_values:
+							setting_values[section][i] = { **setting_values[section][i], **section_values[i] }
+							i += 1
+						while i < n_new_values:
+							setting_values[section].append(section_values[i])
+							i += 1
+
+			else:
+				if not setting_key.section in setting_values:
+					setting_values[setting_key.section] = {}
+
+				setting_values[setting_key.section] = { **setting_values[setting_key.section], **values }
+
+	return setting_values
+
+
 def select_project_settings_file(project_dir, setting_key):
-	if (setting_key == EngineSettings.VERSION):
+	no_index_setting_key = JsonPropertyKey(setting_key.section, -1, setting_key.name) if setting_key.index is not None else setting_key
+
+	if (
+		no_index_setting_key == EngineSettings.VERSION.value
+	):
 		settings_file = project_dir / PRIVATE_PROJECT_SETTINGS_PATH
-	elif (setting_key == EngineSettings.REPOSITORY) or (setting_key == EngineSettings.BRANCH) or (setting_key == EngineSettings.REVISION):
+	elif (
+		no_index_setting_key == EngineSettings.REPOSITORY.value or
+		no_index_setting_key == EngineSettings.BRANCH.value or
+		no_index_setting_key == EngineSettings.REVISION.value
+	):
 		settings_file = project_dir / PUBLIC_PROJECT_SETTINGS_PATH
 	else:
 		throw_error(Messages.INVALID_SETTING_FILE, setting_key.section, setting_key.name)

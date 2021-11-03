@@ -14,7 +14,7 @@
 
 
 from ..globals.o3tanks import CliCommands, EngineSettings, LongOptions, ShortOptions, get_bin_name, init_from_env
-from .types import AutoEnum
+from .types import AutoEnum, JsonPropertyKey
 import enum
 import logging
 import sys
@@ -91,13 +91,18 @@ class Messages(AutoEnum):
 	INVALID_OPTION = enum.auto()
 	INVALID_PACKAGE_MANAGER_RESULT = enum.auto()
 	INVALID_PROJECT_NAME = enum.auto()
+	INVALID_PROPERTY_INDEX = enum.auto()
+	INVALID_PROPERTY_KEY = enum.auto()
+	INVALID_PROPERTY_VALUE = enum.auto()
 	INVALID_REPOSITORY = enum.auto()
 	INVALID_REPOSITORY_URL = enum.auto()
 	INVALID_REPOSITORY_URL_HASH = enum.auto()
 	INVALID_SERIALIZATION = enum.auto()
+	INVALID_SETTING_DATA = enum.auto()
 	INVALID_SETTING_FILE = enum.auto()
 	INVALID_SETTING_NAME = enum.auto()
 	INVALID_SETTING_SECTION = enum.auto()
+	INVALID_SETTING_SYNTAX = enum.auto()
 	INVALID_TARGET = enum.auto()
 	INVALID_USER_NAMESPACE = enum.auto()
 	INVALID_VERSION = enum.auto()
@@ -121,7 +126,9 @@ class Messages(AutoEnum):
 	MISSING_MODULE = enum.auto()
 	MISSING_PACKAGES = enum.auto()
 	MISSING_PROJECT = enum.auto()
+	MISSING_PROPERTY = enum.auto()
 	MISSING_PYTHON = enum.auto()
+	MISSING_SETTING_KEY = enum.auto()
 	MISSING_VERSION = enum.auto()
 	NO_UPDATES = enum.auto()
 	NO_UPDATES_IF_DETACHED = enum.auto()
@@ -151,6 +158,7 @@ class Messages(AutoEnum):
 	UNREACHABLE_X11_DISPLAY = enum.auto()
 	UNSUPPORTED_CONTAINERS_AND_NO_CLIENT = enum.auto()
 	UNSUPPORTED_OPERATING_SYSTEM_FOR_REQUIREMENTS = enum.auto()
+	UNSUPPORTED_INSERT_SETTING_SECTION = enum.auto()
 	UPDATES_AVAILABLE = enum.auto()
 	UPGRADE_COMPLETED = enum.auto()
 	UPGRADE_COMPLETED_SKIP_REBUILD = enum.auto()
@@ -339,6 +347,12 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Unable to parse a returning line of the package manager: {}"
 	elif message_id == Messages.INVALID_PROJECT_NAME:
 		message_text = "Unable to retrieve the project name from the manifest file"
+	elif message_id == Messages.INVALID_PROPERTY_INDEX:
+		message_text = "Index for property '{}' exceeds its size: {}"
+	elif message_id == Messages.INVALID_PROPERTY_KEY:
+		message_text = "Invalid key for property '{}'. Expecting: {}"
+	elif message_id == Messages.INVALID_PROPERTY_VALUE:
+		message_text = "Invalid value for property '{}'. Expecting: {}"
 	elif message_id == Messages.INVALID_REPOSITORY:
 		message_text = "Unable to retrieve repository URL from the engine installation"
 	elif message_id == Messages.INVALID_REPOSITORY_URL:
@@ -347,12 +361,16 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Repository cannot contain '#' symbols"
 	elif message_id == Messages.INVALID_SERIALIZATION:
 		message_text = "Unable to serialize an item: {}. Reason: unsupported output type '{}'"
+	elif message_id == Messages.INVALID_SETTING_DATA:
+		message_text = "Setting file at '{}' is corrupted: {}"
 	elif message_id == Messages.INVALID_SETTING_FILE:
 		message_text = "Unable to determine the file where setting '{}.{}' should be"
 	elif message_id == Messages.INVALID_SETTING_NAME:
 		message_text = "Unsupported setting name: {}"
 	elif message_id == Messages.INVALID_SETTING_SECTION:
 		message_text = "Unsupported section name: {}"
+	elif message_id == Messages.INVALID_SETTING_SYNTAX:
+		message_text = "Invalid syntax for setting: {}. Expecting: section.name or section[index].name"
 	elif message_id == Messages.INVALID_TARGET:
 		message_text = "Unsupported target: {})"
 	elif message_id == Messages.INVALID_USER_NAMESPACE:
@@ -393,10 +411,14 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Unable to find '{0}' module.\nPlease add it to your Python installation using:\npython -m pip install {0}"
 	elif message_id == Messages.MISSING_PACKAGES:
 		message_text = "At least one dependency to use O3DE engine is missing.\nPlease review and execute the following steps to fix the issue."
+	elif message_id == Messages.MISSING_PROPERTY:
+		message_text = "Property cannot be empty"
 	elif message_id == Messages.MISSING_PYTHON:
 		message_text = "Unable to find a valid Python 3 installation"
 	elif message_id == Messages.MISSING_PROJECT:
 		message_text = "Project cannot be empty"
+	elif message_id == Messages.MISSING_SETTING_KEY:
+		message_text = "Setting key cannot be empty"
 	elif message_id == Messages.MISSING_VERSION:
 		message_text = "No version '{}' was found. Please use '" + print_command(CliCommands.INSTALL) + "' to download it and try again"
 	elif message_id == Messages.NO_UPDATES:
@@ -453,6 +475,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "No action can be performed on containers when they are disabled"
 	elif message_id == Messages.UNSUPPORTED_OPERATING_SYSTEM_FOR_REQUIREMENTS:
 		message_text = "Unable to verify requirements since your distro isn't supported yet.\nYou can try to convert the following instructions for 'Ubuntu 20.04':"
+	elif message_id == Messages.UNSUPPORTED_INSERT_SETTING_SECTION:
+		message_text = "A setting section cannot be autopopulated. Please set each field using a dedicated '" + print_command(CliCommands.SETTINGS) + "' command"
 	elif message_id == Messages.UPDATES_AVAILABLE:
 		message_text = "There are {} updates available. Please use '" + print_command(CliCommands.UPGRADE) + "' to update your local installation"
 	elif message_id == Messages.UPGRADE_COMPLETED:
@@ -535,7 +559,15 @@ def print_option(option, value = None):
 
 
 def print_setting(setting):
-	return "{}.{}".format(setting.value.section, setting.value.name)
+	input = setting.value if not isinstance(setting, JsonPropertyKey) else setting
+
+	return "{}{}.{}".format(
+		input.section,
+		"[{}]".format(
+			input.index if input.index >= 0 else ''
+		) if input.index is not None else '',
+		input.name
+	)
 
 
 def set_verbose(level):

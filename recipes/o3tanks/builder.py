@@ -106,19 +106,26 @@ def generate_configurations(source_dir, build_dir):
 	return (result is not None and result.returncode == 0)
 
 
-def get_setting_key(setting_section, setting_name):
-	if not Settings.has_value(setting_section):
+def get_setting_key(setting_section, setting_index, setting_name = None):
+	if setting_section is None:
+		return JsonPropertyKey(None, None, None)
+
+	section = Settings.from_value(setting_section)
+	if section is None:
 		throw_error(Messages.INVALID_SETTING_SECTION, setting_section)
 
-	if setting_section == Settings.ENGINE.value:
-		section = EngineSettings
-	else:
-		throw_error(Messages.INVALID_SETTING_SECTION, setting_section)
+	if setting_name is not None:
+		if section is Settings.ENGINE:
+			section = EngineSettings
+		else:
+			throw_error(Messages.INVALID_SETTING_SECTION, setting_section)
 
-	setting_key = section.from_value(CfgPropertyKey(setting_section, setting_name))
-	if setting_key is None:
-		throw_error(Messages.INVALID_SETTING_NAME, setting_name)
+		index = -1 if setting_index is not None else setting_index
 
+		if not section.has_value(JsonPropertyKey(setting_section, index, setting_name)):
+			throw_error(Messages.INVALID_SETTING_NAME, setting_name)
+
+	setting_key = JsonPropertyKey(setting_section, setting_index, setting_name)
 	return setting_key
 
 
@@ -271,7 +278,7 @@ def build_project(config, binary):
 		else:
 			throw_error(Messages.INVALID_BINARY, binary.value)
 
-		project_name = read_json_property(O3DE_PROJECT_SOURCE_DIR / "project.json", "project_name")
+		project_name = read_json_property(O3DE_PROJECT_SOURCE_DIR / "project.json", JsonPropertyKey(None, None, "project_name"))
 		if project_name is None:
 			throw_error(Messages.INVALID_PROJECT_NAME)
 
@@ -385,49 +392,78 @@ def generate_project_configurations(project_name, engine_version):
 	if result.returncode != 0:
 		throw_error(Messages.UNCOMPLETED_INIT_PROJECT)
 
-	write_project_setting(Settings.ENGINE.value, None, engine_version)
+	write_project_setting(Settings.ENGINE.value, None, None, engine_version)
 
 
-def read_project_setting(setting_section, setting_name):
+def read_project_setting(setting_section, setting_index, setting_name):
 	project_extra_dir = O3DE_PROJECT_SOURCE_DIR / PROJECT_EXTRA_PATH
 	if not project_extra_dir.is_dir():
 		throw_error(Messages.SETTINGS_NOT_FOUND)
 
-	required_setting_keys = []
-	if setting_name is not None:
-		setting_key = get_setting_key(setting_section, setting_name)
-		required_setting_keys.append(setting_key)
+	setting_key = get_setting_key(setting_section, setting_index, setting_name)
 
+	expected_setting_keys = []
+	if setting_key.is_single():
+		expected_setting_keys.append(setting_key)
 	else:
-		if (setting_section == Settings.ENGINE.value) or (setting_section is None):
-			for setting_key in EngineSettings:
-				required_setting_keys.append(setting_key)
+		if (setting_key.section == Settings.ENGINE.value) or (setting_key.section is None):
+			for key in EngineSettings:
+				expected_setting_keys.append(key.value)
 
-	if len(required_setting_keys) == 0:
+	n_expected_setting_keys = len(expected_setting_keys)
+	if n_expected_setting_keys == 0:
 		throw_error(Messages.INVALID_SETTING_SECTION, setting_section)
-
-	for setting_key in required_setting_keys:
+	elif n_expected_setting_keys == 1:
 		settings_file = select_project_settings_file(O3DE_PROJECT_SOURCE_DIR, setting_key)
-		setting_value = read_cfg_property(settings_file, setting_key)
+
+		setting_value = read_json_property(settings_file, setting_key)
 		if setting_value is None:
 			setting_value = ''
 
-		if setting_name is not None:
-			print_msg(Level.INFO, setting_value)
-		else:
-			print_msg(Level.INFO, "{} = {}".format(print_setting(setting_key), setting_value))
-
-
-def write_project_setting(setting_section, setting_name, setting_value, show_preview = False):
-	new_settings = {}
-	if setting_name is not None:
-		setting_key = get_setting_key(setting_section, setting_name)
-		new_settings[setting_key] = setting_value
-
+		print_msg(Level.INFO, setting_value)
 	else:
-		if setting_section == Settings.ENGINE.value:
-			new_settings[EngineSettings.VERSION] = setting_value
+		setting_values = read_project_setting_values(O3DE_PROJECT_SOURCE_DIR, setting_key.section, setting_key.index)
 
+		output = {}
+		for expected_setting_key in expected_setting_keys:
+			section_values = setting_values.get(expected_setting_key.section)
+			if section_values is None:
+				section_values = {}
+
+			if expected_setting_key.is_any() and setting_key.is_all():
+				for index, index_values in enumerate(section_values):
+					name_value = index_values.get(expected_setting_key.name)
+					if name_value is None:
+						name_value = ''
+
+					key = JsonPropertyKey(expected_setting_key.section, index, expected_setting_key.name)
+					output[print_setting(key)] = name_value
+
+			else:
+				name_value = section_values.get(expected_setting_key.name)
+				if name_value is None:
+					name_value = ''
+
+				key = JsonPropertyKey(expected_setting_key.section, setting_key.index, expected_setting_key.name)
+				output[print_setting(key)] = name_value
+
+		output_keys = list(output.keys())
+		output_keys.sort()
+		for key in output_keys:
+			print_msg(Level.INFO, "{} = {}".format(key, output[key]))
+
+
+def write_project_setting(setting_section, setting_index, setting_name, setting_value, show_preview = False):
+	setting_key = get_setting_key(setting_section, setting_index, setting_name)
+	current_setting_values = read_project_setting_values(O3DE_PROJECT_SOURCE_DIR, setting_key.section, setting_key.index)
+
+	changed_settings = {}
+	if setting_key.name is not None:
+		new_setting_values = { setting_key.name: setting_value }
+	else:
+		if setting_key.section is None:
+			throw_error(Messages.MISSING_SETTING_KEY)
+		elif setting_key.section == Settings.ENGINE.value:
 			if setting_value is not None:
 				result_type, repository = get_engine_repository_from_source(O3DE_ENGINE_SOURCE_DIR)
 				if result_type is not RepositoryResultType.OK:
@@ -435,25 +471,57 @@ def write_project_setting(setting_section, setting_name, setting_value, show_pre
 			else:
 				repository = Repository(None, None, None)
 
-			new_settings[EngineSettings.REPOSITORY] = repository.url
-			new_settings[EngineSettings.BRANCH] = repository.branch
-			new_settings[EngineSettings.REVISION] = repository.revision
+			new_setting_values = {
+				EngineSettings.VERSION.value.name: setting_value,
+				EngineSettings.REPOSITORY.value.name: repository.url,
+				EngineSettings.BRANCH.value.name: repository.branch,
+				EngineSettings.REVISION.value.name: repository.revision
+			}
 
 		else:
 			throw_error(Messages.INVALID_SETTING_SECTION, setting_section)
 
-	if len(new_settings) == 0:
-		return True
+	if new_setting_values is not None:
+		current_section_values = current_setting_values.get(setting_key.section)
+		if setting_key.is_any():
+			new_setting_index = len(current_section_values) if isinstance(current_section_values, list) else 0
+		else:
+			new_setting_index = setting_key.index
 
-	changed_settings = {}
-	for setting_key, new_setting_value in new_settings.items():
-		settings_file = select_project_settings_file(O3DE_PROJECT_SOURCE_DIR, setting_key)
-		current_setting_value = read_cfg_property(settings_file, setting_key)
+		for new_setting_name, new_setting_value in new_setting_values.items():
+			if isinstance(current_section_values, list):
+				if new_setting_index < len(current_section_values):
+					current_index_values = current_section_values[new_setting_index]
+				else:
+					current_index_values = None
+			else:
+				current_index_values = current_section_values
 
-		if new_setting_value == current_setting_value:
-			continue
+			if current_index_values is not None:
+				current_setting_value = current_index_values.get(new_setting_name)
+			else:
+				current_setting_value = None
 
-		changed_settings[setting_key] = (settings_file, current_setting_value, new_setting_value)
+			if current_setting_value == new_setting_value:
+				continue
+
+			new_setting_key = JsonPropertyKey(setting_key.section, new_setting_index, new_setting_name)
+			settings_file = select_project_settings_file(O3DE_PROJECT_SOURCE_DIR, new_setting_key)
+
+			if settings_file not in changed_settings:
+				changed_settings[settings_file] = {}
+			changed_settings[settings_file][new_setting_key] = (current_setting_value, new_setting_value)
+
+	else:
+		for section, section_values in current_setting_values.items():
+			for index, index_values in enumerate(section_values):
+				for name, current_setting_value in index_values.items():
+					new_setting_key = JsonPropertyKey(section, index, name)
+					settings_file = select_project_settings_file(O3DE_PROJECT_SOURCE_DIR, new_setting_key)
+
+					if settings_file not in changed_settings:
+						changed_settings[settings_file] = {}
+					changed_settings[settings_file][new_setting_key] = (current_setting_value, None)
 
 	if len(changed_settings) == 0:
 		return True
@@ -461,14 +529,15 @@ def write_project_setting(setting_section, setting_name, setting_value, show_pre
 	if show_preview:
 		print_msg(Level.INFO, Messages.CHANGED_SETTINGS)
 
-		for setting_key, change in changed_settings.items():
-			settings_file, current_setting_value, new_setting_value = change
+		for settings_file, file_changes in changed_settings.items():
+			for new_setting_key, setting_change in file_changes.items():
+				current_setting_value, new_setting_value = setting_change
 
-			print_msg(Level.INFO, "- {}: {} -> {}".format(
-				print_setting(setting_key),
-				(current_setting_value if current_setting_value is not None else "<empty>"),
-				(new_setting_value if new_setting_value is not None else "<empty>")
-			))
+				print_msg(Level.INFO, "- {}: {} -> {}".format(
+					print_setting(new_setting_key),
+					(current_setting_value if current_setting_value is not None else "<empty>"),
+					(new_setting_value if new_setting_value is not None else "<empty>")
+				))
 
 		print_msg(Level.INFO, '')
 		if not ask_for_confirmation(Messages.SAVE_QUESTION):
@@ -476,9 +545,73 @@ def write_project_setting(setting_section, setting_name, setting_value, show_pre
 
 	check_project_settings()
 
-	for setting_key, change in changed_settings.items():
-		settings_file, current_setting_value, new_setting_value = change
-		write_cfg_property(settings_file, setting_key, new_setting_value)
+	for settings_file, file_changes in changed_settings.items():
+		has_no_value = True
+
+		if len(file_changes) == 1:
+			new_setting_key, setting_change = next(iter(file_changes.items()))
+			new_setting_values = setting_change[1]
+
+		else:
+			first_key = next(iter(file_changes))
+			new_setting_key = JsonPropertyKey(first_key.section, first_key.index, None)
+
+			is_multi_values = (setting_key.index is None) and (first_key.index is not None)
+			if not is_multi_values:
+				new_setting_values = {}
+				for key, setting_change in file_changes.items():
+					new_setting_values[key.name] = setting_change[1]
+
+			else:
+				new_setting_values = []
+				for key, setting_change in file_changes.items():
+					while key.index >= len(new_setting_values):
+						new_setting_values.append({})
+
+					new_setting_values[key.index][key.name] = setting_change[1]
+
+		write_json_property(settings_file, new_setting_key, new_setting_values)
+
+	if setting_value is not None:
+		return
+
+	purge_index = setting_key.index
+	while True:
+		written_setting_values = read_project_setting_values(O3DE_PROJECT_SOURCE_DIR, setting_key.section, None)
+		if setting_key.section not in written_setting_values:
+			break
+
+		has_no_value = True
+
+		section_values = written_setting_values[setting_key.section]
+		if isinstance(section_values, dict):
+			for name, value in section_values.items():
+				if value is not None:
+					has_no_value = False
+
+		elif isinstance(section_values, list):
+			for index_values in section_values:
+				for name, value in index_values.items():
+					if value is not None:
+						has_no_value = False
+
+		else:
+			if section_values is not None:
+				has_no_value = False
+
+		if has_no_value:
+			settings_files = [
+				O3DE_PROJECT_SOURCE_DIR / PRIVATE_PROJECT_SETTINGS_PATH,
+				O3DE_PROJECT_SOURCE_DIR / PUBLIC_PROJECT_SETTINGS_PATH
+			]
+
+			for settings_file in settings_files:
+				write_json_property(settings_file, JsonPropertyKey(setting_key.section, purge_index, None), None)
+
+		if purge_index is not None:
+			purge_index = None
+		else:
+			break
 
 
 # --- MAIN ---
@@ -561,20 +694,21 @@ def main():
 	elif command == BuilderCommands.SETTINGS:
 		if target == Targets.PROJECT:
 			setting_section = deserialize_arg(3, str)
-			setting_name = deserialize_arg(4, str)
-			setting_value = deserialize_arg(5, str)
-			clear = deserialize_arg(6, bool)
+			setting_index = deserialize_arg(4, int)
+			setting_name = deserialize_arg(5, str)
+			setting_value = deserialize_arg(6, str)
+			clear = deserialize_arg(7, bool)
 
 			if clear:
-				write_project_setting(setting_section, setting_name, None, False)
+				write_project_setting(setting_section, setting_index, setting_name, None, False)
 			elif setting_value is None:
-				read_project_setting(setting_section, setting_name)
+				read_project_setting(setting_section, setting_index, setting_name)
 			else:
-				preview = deserialize_arg(7, bool)
+				preview = deserialize_arg(8, bool)
 				if preview is None:
 					preview = False
 
-				write_project_setting(setting_section, setting_name, setting_value, preview)
+				write_project_setting(setting_section, setting_index, setting_name, setting_value, preview)
 
 		else:
 			throw_error(Messages.INVALID_TARGET, target.value)

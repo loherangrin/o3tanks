@@ -47,6 +47,38 @@ class CfgPropertyKey(typing.NamedTuple):
 	name: str
 
 
+class JsonPropertyKey(typing.NamedTuple):
+	section: str
+	index: int
+	name: str
+
+	def is_single(self):
+		return (
+			self.name is not None and
+			((self.index is None) or (self.index >= 0))
+		)
+
+	def is_all(self):
+		return (self.name is None) and (self.index is None)
+
+	def is_any(self):
+		return self.index == -1
+
+	def print(self):
+		if self.section is not None:
+			output = self.section
+			if (self.index is not None):
+				output += "[{}]".format(self.index)
+
+		else:
+			output = ""
+
+		if self.name is not None:
+			output += ".{}".format(self.name)
+
+		return output
+
+
 class OSFamilies(ObjectEnum):
 	LINUX = "Linux"
 	MAC = "MacOS"
