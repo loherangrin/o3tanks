@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from ..globals.o3de import O3DE_ENGINE_BUILD_DIR, O3DE_ENGINE_INSTALL_DIR, O3DE_ENGINE_SOURCE_DIR, O3DE_PACKAGES_DIR, O3DE_PROJECT_SOURCE_DIR
+from ..globals.o3de import O3DE_ENGINE_BUILD_DIR, O3DE_ENGINE_INSTALL_DIR, O3DE_ENGINE_SOURCE_DIR, O3DE_GEMS_DIR, O3DE_GEMS_EXTERNAL_DIR, O3DE_PACKAGES_DIR, O3DE_PROJECT_SOURCE_DIR
 from ..globals.o3tanks import DATA_DIR, DEVELOPMENT_MODE, DISPLAY_ID, GPU_DRIVER_NAME, OPERATING_SYSTEM, REAL_USER, RUN_CONTAINERS, ROOT_DIR, USER_NAME, USER_GROUP, GPUDrivers, Images, Volumes, get_version_number
 from .filesystem import clear_directory, is_directory_empty
 from .input_output import Level, Messages, get_verbose, print_msg, throw_error
@@ -728,6 +728,7 @@ class NoneContainerClient(ContainerClient):
 		import subprocess
 
 		self._ENGINES_DIR = DATA_DIR / "engines"
+		self._GEMS_DIR = DATA_DIR / "gems"
 		self._PACKAGES_DIR = DATA_DIR / "packages"
 
 
@@ -777,6 +778,8 @@ class NoneContainerClient(ContainerClient):
 				engine_volume_type = Volumes.BUILD
 			elif to_path == str(O3DE_ENGINE_INSTALL_DIR):
 				engine_volume_type = Volumes.INSTALL
+			elif to_path == str(O3DE_GEMS_DIR):
+				mapping["O3DE_GEMS_DIR"] = str(self._GEMS_DIR)
 			elif to_path == str(O3DE_PACKAGES_DIR):
 				mapping["O3DE_PACKAGES_DIR"] = str(self._PACKAGES_DIR)
 
@@ -789,6 +792,8 @@ class NoneContainerClient(ContainerClient):
 				mapping["O3DE_PROJECT_DIR"] = str(from_path)
 			elif to_path == str(ROOT_DIR):
 				mapping["O3TANKS_DIR"] = str(from_path)
+			elif to_path.startswith(str(O3DE_GEMS_EXTERNAL_DIR)):
+				mapping["O3DE_GEMS_EXTERNAL_DIR"] = pathlib.Path(from_path).anchor
 
 		return mapping
 
@@ -926,6 +931,9 @@ class NoneContainerClient(ContainerClient):
 	def _calculate_volume_path(self, volume_name):
 		if volume_name is None:
 			return None
+
+		elif volume_name == self.get_volume_name(Volumes.GEMS):
+			volume_dir = self._GEMS_DIR
 
 		elif volume_name == self.get_volume_name(Volumes.PACKAGES):
 			volume_dir = self._PACKAGES_DIR

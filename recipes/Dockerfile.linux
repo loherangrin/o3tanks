@@ -58,12 +58,16 @@ RUN if [ -z "${USER_NAME}" ] || [ -z "${USER_GROUP}" ] || [ -z "${USER_UID}" ] |
 ENV O3DE_DIR=${USER_HOME}/o3de
 
 ENV O3DE_ENGINE_DIR=${O3DE_DIR}/engine
+ENV O3DE_GEMS_DIR=${O3DE_DIR}/gems
+ENV O3DE_GEMS_EXTERNAL_DIR=${O3DE_GEMS_DIR}/.external
 ENV O3DE_PACKAGES_DIR=${O3DE_DIR}/packages
 ENV O3DE_PROJECT_DIR=${O3DE_DIR}/project
 
 ENV O3TANKS_DIR=${USER_HOME}/o3tanks
 
 RUN mkdir --parents "${O3DE_ENGINE_DIR}" \
+ && mkdir --parents "${O3DE_GEMS_DIR}" \
+ && mkdir --parents "${O3DE_GEMS_EXTERNAL_DIR}" \
  && mkdir --parents "${O3DE_PACKAGES_DIR}" \
  && mkdir --parents "${O3DE_PROJECT_DIR}" \
  && mkdir --parents "${O3TANKS_DIR}" \

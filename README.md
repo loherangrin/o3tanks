@@ -39,14 +39,14 @@ Features:
 
 Install the latest engine version from the official repository:
 ```
-o3tanks install development
+o3tanks install engine --branch development
 ```
 
 Initialize a new empty project:
 ```
 mkdir my_project
 cd my_project
-o3tanks init --engine development --as MyProject
+o3tanks init project --as MyProject --engine development
 ```
 
 Open the editor to develop the project:
@@ -67,8 +67,8 @@ o3tanks settings engine
 
 Keep the engine installation up-to-date:
 ```
-o3tanks refresh development
-o3tanks upgrade development
+o3tanks refresh engine development
+o3tanks upgrade engine development
 ```
 
 Display a description of available commands and options:
@@ -77,7 +77,11 @@ o3tanks help
 o3tanks help <command>
 ```
 
-Please refer to the [main documentation](https://github.com/loherangrin/o3tanks/wiki) for more complex scenarios, such as installing the engine from your personal fork or changing project settings.
+Please refer to the [main documentation](https://github.com/loherangrin/o3tanks/wiki) for more complex scenarios, such as:
+- installing the engine from your personal fork;
+- managing the project gems (modules) to add / remove new custom features in the engine;
+- creating a new empty gem to extend the engine and publishing it on your repository;
+- ...and much more.
 
 ## Update
 

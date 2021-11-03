@@ -26,21 +26,6 @@ import time
 
 # -- SUBFUNCTIONS ---
 
-def register_project():
-	try:
-		subprocess.run([ O3DE_CLI_FILE, "register", "--this-engine" ], stdout = subprocess.DEVNULL, check = True)
-		subprocess.run([ O3DE_CLI_FILE, "register", "--project-path", O3DE_PROJECT_SOURCE_DIR ], stdout = subprocess.DEVNULL, check = True)
-
-	except FileNotFoundError as error:
-		if error.filename == O3DE_CLI_FILE.name or (OPERATING_SYSTEM.family is OSFamilies.WINDOWS and error.filename is None):
-			throw_error(Messages.CORRUPTED_ENGINE_SOURCE)
-		else:
-			raise error
-
-	except subprocess.CalledProcessError as error:
-		throw_error(Messages.UNCOMPLETED_REGISTRATION, error.returncode, "\n{}\n{}".format(error.stdout, error.stderr))
-
-
 def run_asset_processor(config):
 	asset_processor_file = O3DE_PROJECT_BIN_DIR / config.value / get_binary_filename("AssetProcessor")
 	if not asset_processor_file.is_file():
@@ -86,7 +71,9 @@ def open_project(config):
 	if not binary_file.is_file():
 		throw_error(Messages.MISSING_BINARY, str(binary_file), config.value, "")
 
-	register_project()
+	register_project(O3DE_CLI_FILE, O3DE_PROJECT_SOURCE_DIR)
+	old_gems = register_gems(O3DE_CLI_FILE, O3DE_PROJECT_SOURCE_DIR, O3DE_GEMS_DIR, O3DE_GEMS_EXTERNAL_DIR, show_unmanaged = True)
+
 	asset_processor = run_asset_processor(config)
 
 	result = run_binary(binary_file)
@@ -97,11 +84,13 @@ def open_project(config):
 		else:
 			asset_processor.wait()
 
+	clear_registered_gems(O3DE_PROJECT_SOURCE_DIR, old_gems)
+
 	exit(result.returncode)
 
 
 def run_project(binary, config):
-	project_name = read_json_property(O3DE_PROJECT_SOURCE_DIR / "project.json", "project_name")
+	project_name = read_json_property(O3DE_PROJECT_SOURCE_DIR / "project.json", JsonPropertyKey(None, None, "project_name"))
 	if project_name is None:
 		throw_error(Messages.INVALID_PROJECT_NAME)
 
@@ -118,12 +107,15 @@ def run_project(binary, config):
 	if not binary_file.is_file():
 		throw_error(Messages.MISSING_BINARY, str(binary_file), config.value, binary.value)
 
-	register_project()
+	register_project(O3DE_CLI_FILE, O3DE_PROJECT_SOURCE_DIR)
+	old_gems = register_gems(O3DE_CLI_FILE, O3DE_PROJECT_SOURCE_DIR, O3DE_GEMS_DIR, O3DE_GEMS_EXTERNAL_DIR, show_unmanaged = True)
 
 	result = run_binary(binary_file, True)
 	error_code = result.returncode
 	if has_gui and (error_code == -6):
 		throw_error(Messages.UNREACHABLE_X11_DISPLAY, DISPLAY_ID, REAL_USER.uid)
+
+	clear_registered_gems(O3DE_PROJECT_SOURCE_DIR, old_gems)
 
 	exit(result.returncode)
 

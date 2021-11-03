@@ -59,10 +59,19 @@ def get_current_branches(repository):
 	return (local_branch, remote_branch)
 
 
+def get_repository(path):
+	config_dir = path / ".git"
+	if not config_dir.is_dir():
+		return None
+
+	repository = pygit2.Repository(config_dir)
+	return repository
+
+
 # --- FUNCTIONS ---
 
-def clone_repository(url, reference):
-	if O3DE_ENGINE_REPOSITORY_DIR.is_dir():
+def clone_repository(url, reference, target_dir):
+	if get_repository(target_dir) is not None:
 		throw_error(Messages.SOURCE_ALREADY_EXISTS)
 
 	if is_commit(reference):
@@ -72,19 +81,24 @@ def clone_repository(url, reference):
 		branch = reference
 		commit_hash = None
 
-	for stage_dir in [ O3DE_ENGINE_BUILD_DIR, O3DE_ENGINE_INSTALL_DIR ]:
-		if stage_dir.is_dir() and is_directory_empty(stage_dir):
-			stage_dir.rmdir()
+	is_engine = (target_dir is O3DE_ENGINE_SOURCE_DIR)
+	if is_engine:
+		for stage_dir in [ O3DE_ENGINE_BUILD_DIR, O3DE_ENGINE_INSTALL_DIR ]:
+			if stage_dir.is_dir() and is_directory_empty(stage_dir):
+				stage_dir.rmdir()
 
-	print_msg(Level.INFO, Messages.START_DOWNLOAD_ENGINE_SOURCE, url)
-	repository = pygit2.clone_repository(url, O3DE_ENGINE_SOURCE_DIR, checkout_branch = branch)
+	if not target_dir.exists():
+		target_dir.mkdir(parents = True)
+
+	print_msg(Level.INFO, Messages.START_DOWNLOAD_SOURCE, url)
+	repository = pygit2.clone_repository(url, target_dir, checkout_branch = branch)
 
 	if commit_hash is not None:
 		commit = repository.get(commit_hash)
 		repository.checkout_tree(commit)
 		repository.set_head(commit.id)
 
-	if url != O3DE_REPOSITORY_URL:
+	if is_engine and url != O3DE_REPOSITORY_URL:
 		matches = re.match(r"^{}/([a-zA-Z0-9\-]+)/([a-zA-Z0-9\.\-]+)$".format(O3DE_REPOSITORY_HOST), url)
 		if matches is not None:
 			fork_username = matches.group(1)
@@ -104,11 +118,11 @@ def clone_repository(url, reference):
 			repository.config["lfs.url"] = "{}/fork/{}".format(lfs_endpoint, fork_username)
 
 
-def fetch_branch():
-	if not O3DE_ENGINE_REPOSITORY_DIR.is_dir():
+def fetch_branch(repository_dir):
+	repository = get_repository(repository_dir)
+	if repository is None:
 		throw_error(Messages.SOURCE_NOT_FOUND)
 
-	repository = pygit2.Repository(O3DE_ENGINE_REPOSITORY_DIR)
 	local_branch, remote_branch = get_current_branches(repository)
 
 	remote = repository.remotes[remote_branch.remote_name]
@@ -126,11 +140,11 @@ def fetch_branch():
 	return changes
 
 
-def merge_branch():
-	if not O3DE_ENGINE_REPOSITORY_DIR.is_dir():
+def merge_branch(repository_dir):
+	repository = get_repository(repository_dir)
+	if repository is None:
 		throw_error(Messages.SOURCE_NOT_FOUND)
 
-	repository = pygit2.Repository(O3DE_ENGINE_REPOSITORY_DIR)
 	local_branch, remote_branch = get_current_branches(repository)
 	
 	remote_commit = remote_branch.peel().id
@@ -156,18 +170,36 @@ def main():
 		throw_error(Messages.EMPTY_COMMAND)
 
 	command = deserialize_arg(1, UpdaterCommands)
+	target = deserialize_arg(2, Targets)
+
+	if target is None:
+		throw_error(Messages.INVALID_TARGET, sys.argv[2])
+	elif target in [ Targets.ENGINE, Targets.SELF ]:
+		repository_dir = O3DE_ENGINE_SOURCE_DIR
+	elif target is Targets.GEM:
+		repository_dir = O3DE_GEMS_DIR
+	else:
+		throw_error(Messages.INVALID_TARGET, target)
 
 	if command is None:
 		throw_error(Messages.INVALID_COMMAND, sys.argv[1])
 
 	elif command == UpdaterCommands.INIT:
-		repository_url = deserialize_arg(2, str)
-		repository_reference = deserialize_arg(3, str)
+		repository_url = deserialize_arg(3, str)
+		repository_reference = deserialize_arg(4, str)
 
-		clone_repository(repository_url, repository_reference)
+		if target is Targets.GEM:
+			gem_version = deserialize_arg(5, str)
+			repository_dir /= gem_version
+
+		clone_repository(repository_url, repository_reference, repository_dir)
 
 	elif command in [ UpdaterCommands.REFRESH, UpdaterCommands.UPGRADE ]:
-		n_ahead, n_behind = fetch_branch()
+		if target is Targets.GEM:
+			gem_version = deserialize_arg(3, str)
+			repository_dir /= gem_version
+
+		n_ahead, n_behind = fetch_branch(repository_dir)
 
 		if n_behind == 0:
 			print_msg(Level.INFO, Messages.NO_UPDATES)
@@ -176,7 +208,7 @@ def main():
 			print_msg(Level.INFO, Messages.UPDATES_AVAILABLE, n_behind)
 
 		elif n_behind > 0:
-			merge_branch()
+			merge_branch(repository_dir)
 
 		else:
 			throw_error(Messages.UNCOMPLETED_REFRESH)
