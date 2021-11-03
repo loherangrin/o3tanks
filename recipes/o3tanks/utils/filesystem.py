@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from .input_output import Messages, throw_error
+from .input_output import Level, Messages, ask_for_confirmation, print_msg, throw_error
 from .types import JsonPropertyKey, ObjectEnum
 import configparser
 import json
@@ -40,9 +40,14 @@ def calculate_size(path):
 	return bytes_size
 
 
-def clear_directory(path):
+def clear_directory(path, require_confirmation = False):
 	if not path.is_dir():
 		return False
+
+	if require_confirmation:
+		print_msg(Level.INFO, Messages.CLEAR_DIRECTORY, str(path))
+		if not ask_for_confirmation(Messages.CONTINUE_QUESTION):
+			exit(1)
 
 	for content in path.iterdir():
 		if content.is_dir():
@@ -159,6 +164,16 @@ def read_json_property(file, key):
 		data = None
 
 	return data
+
+
+def remove_directory(path, require_confirmation = False):
+	cleared = clear_directory(path, require_confirmation)
+	if not cleared:
+		return False
+
+	path.rmdir()
+
+	return True
 
 
 def write_cfg_property(file, key, value):

@@ -119,15 +119,15 @@ class RepositoryResult(typing.NamedTuple):
 	value: Repository = None
 
 
-class EngineResultType(AutoEnum):
+class DependencyResultType(AutoEnum):
 	OK = enum.auto()
 	MISSING = enum.auto()
 	INVALID = enum.auto()
 	NOT_FOUND = enum.auto()
 	DIFFERENT = enum.auto()
  
-class EngineResult(typing.NamedTuple):
-	type: EngineResultType
+class DependencyResult(typing.NamedTuple):
+	type: DependencyResultType
 	value: str = None
 
 

@@ -17,6 +17,7 @@ from ..utils.types import JsonPropertyKey, LinuxOSNames, ObjectEnum, OperatingSy
 import os
 import pathlib
 import platform
+import typing
 
 
 # --- TYPES ---
@@ -35,16 +36,25 @@ class CliCommands(ObjectEnum):
 	UNINSTALL = "uninstall"
 	UPGRADE = "upgrade"
 
+	ADD = "add"
 	BUILD = BuilderCommands.BUILD.value
 	CLEAN = BuilderCommands.CLEAN.value
 	INIT = BuilderCommands.INIT.value
 	OPEN = "open"
+	REMOVE = "remove"
 	RUN = "run"
 	SETTINGS = BuilderCommands.SETTINGS.value
 
 	HELP = "help"
 	INFO = "info"
 	VERSION = "version"
+
+
+class CliSubCommands(ObjectEnum):
+	ENGINE = "engine"
+	GEM = "gem"
+	PROJECT = "project"
+	SELF = [ "self", "o3tanks" ]
 
 
 class UpdaterCommands(ObjectEnum):
@@ -66,6 +76,26 @@ class GPUDrivers(ObjectEnum):
 	NVIDIA_PROPRIETARY = "nvidia"
 
 
+class GemReferenceTypes(ObjectEnum):
+	ENGINE = "engine"
+	PATH = "path"
+	VERSION = "version"
+
+class GemReference(typing.NamedTuple):
+	type: GemReferenceTypes
+	value: any
+
+	def print(self):
+		if self.type is GemReferenceTypes.ENGINE:
+			return "{}/{}".format(GemReferenceTypes.ENGINE.value, self.value)
+
+		elif self.type is GemReferenceTypes.PATH:
+			return str(self.value)
+
+		else:
+			return self.value
+
+
 class Images(ObjectEnum):
 	BUILDER = "builder"
 	CLI = "cli"
@@ -85,14 +115,18 @@ class LongOptions(ObjectEnum):
 	FORCE = "force"
 	FORK = "fork"
 	HELP = CliCommands.HELP.value
+	MINIMAL_PROJECT = "minimal"
+	PATH = "path"
 	PROJECT = "project"
 	QUIET = "quiet"
+	SKIP_EXAMPLES = "no-project"
 	SKIP_REBUILD = "no-rebuild"
 	REMOVE_BUILD = "remove-build"
 	REMOVE_INSTALL = "remove-install"
 	REPOSITORY = "repository"
 	SAVE_IMAGES = "save-images"
 	TAG = "tag"
+	TYPE = "type"
 	VERBOSE = "verbose"
 	VERSION = CliCommands.VERSION.value
 
@@ -108,6 +142,7 @@ class ShortOptions(ObjectEnum):
 
 class Settings(ObjectEnum):
 	ENGINE = "engine"
+	GEMS = "gems"
 
 class EngineSettings(ObjectEnum):
 	VERSION = JsonPropertyKey(Settings.ENGINE.value, None, "id")
@@ -115,18 +150,29 @@ class EngineSettings(ObjectEnum):
 	BRANCH = JsonPropertyKey(Settings.ENGINE.value, None, "branch")
 	REVISION = JsonPropertyKey(Settings.ENGINE.value, None, "revision")
 
+class GemSettings(ObjectEnum):
+	VERSION = JsonPropertyKey(Settings.GEMS.value, -1, "id")
+	REPOSITORY = JsonPropertyKey(Settings.GEMS.value, -1, "repository")
+	BRANCH = JsonPropertyKey(Settings.GEMS.value, -1, "branch")
+	REVISION = JsonPropertyKey(Settings.GEMS.value, -1, "revision")
+	ABSOLUTE_PATH = JsonPropertyKey(Settings.GEMS.value, -1, "absolute_path")
+	RELATIVE_PATH = JsonPropertyKey(Settings.GEMS.value, -1, "relative_path")
+
 
 class Targets(ObjectEnum):
 	ENGINE = "engine"
+	GEM = "gem"
 	PROJECT = "project"
-	SELF = [ "self", "o3tanks" ]
+	SELF = "self"
 
 
 class Volumes(ObjectEnum):
-	SOURCE = "source"
+	GEMS = "gems"
 	BUILD = "build"
 	INSTALL = "install"
 	PACKAGES = "packages"
+	SOURCE = "source"
+
 
 # --- FUNCTIONS ---
 
@@ -254,6 +300,10 @@ VERSION_MAJOR = 0
 VERSION_MINOR = 2
 VERSION_PATCH = 0
 VERSION_PRE_RELEASE = "wip"
+
+WORKSPACE_GEM_DOCUMENTATION_PATH = "docs"
+WORKSPACE_GEM_EXAMPLE_PATH = "examples"
+WORKSPACE_GEM_SOURCE_PATH = "gem"
 
 
 # --- VARIABLES ---

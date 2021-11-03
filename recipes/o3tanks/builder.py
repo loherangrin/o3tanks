@@ -117,6 +117,8 @@ def get_setting_key(setting_section, setting_index, setting_name = None):
 	if setting_name is not None:
 		if section is Settings.ENGINE:
 			section = EngineSettings
+		elif section is Settings.GEMS:
+			section = GemSettings
 		else:
 			throw_error(Messages.INVALID_SETTING_SECTION, setting_section)
 
@@ -259,6 +261,156 @@ def generate_engine_configurations():
 		throw_error(Messages.UNCOMPLETED_SOLUTION_GENERATION)
 
 
+# --- FUNCTIONS (GEM) ---
+
+def generate_gem(gem_name, base_template, has_examples, engine_version, gem_dir = O3DE_PROJECT_SOURCE_DIR):
+	if not is_directory_empty(gem_dir):
+		throw_error(Messages.PROJECT_DIR_NOT_EMPTY)
+
+	if has_examples:
+		example_project_dir = gem_dir / WORKSPACE_GEM_EXAMPLE_PATH
+		gem_dir /= WORKSPACE_GEM_SOURCE_PATH
+	else:
+		example_project_dir = None
+
+	try:
+		result = subprocess.run([
+				O3DE_CLI_FILE, "create-gem",
+				"--gem-name", gem_name,
+				"--gem-path", str(gem_dir),
+				"--template-name", base_template,
+				"--force",
+				"--no-register"
+			])
+
+	except FileNotFoundError as error:
+		if error.filename == O3DE_CLI_FILE.name or (OPERATING_SYSTEM.family is OSFamilies.WINDOWS and error.filename is None):
+			throw_error(Messages.CORRUPTED_ENGINE_SOURCE, error.filename)
+		else:
+			raise error
+
+	if result.returncode != 0:
+		throw_error(Messages.UNCOMPLETED_INIT_GEM)
+
+	if example_project_dir is not None:
+		example_project_name = "{}Examples".format(gem_name)
+		if not example_project_dir.exists():
+			example_project_dir.mkdir(parents = True)
+
+		generate_project(example_project_name, O3DE_ProjectTemplates.STANDARD.value, engine_version, example_project_dir)
+		change_gem_status(example_project_dir, GemReference(GemReferenceTypes.PATH, gem_dir), True)
+
+		relative_gem_path = "../{}".format(WORKSPACE_GEM_SOURCE_PATH)
+		write_project_setting(example_project_dir, GemSettings.RELATIVE_PATH.value.section, GemSettings.RELATIVE_PATH.value.index, GemSettings.RELATIVE_PATH.value.name, relative_gem_path)
+		write_json_property(get_project_manifest_file(example_project_dir), JsonPropertyKey("external_subdirectories", None, None), [ relative_gem_path ])
+
+		workspace_dir = example_project_dir.parent
+		workspace_manifest_file = workspace_dir / "repo.json"
+		if workspace_manifest_file.exists():
+			throw_error(Messages.WORKSPACE_MANIFEST_ALREADY_EXISTS)
+
+		(workspace_dir / WORKSPACE_GEM_DOCUMENTATION_PATH).mkdir(parents = True)
+
+		with workspace_manifest_file.open('wt') as file_handler:
+			workspace_manifest = {
+				"gems": [
+					str(gem_dir.relative_to(workspace_dir))
+				],
+				"projects": [
+					str(example_project_dir.relative_to(workspace_dir))
+				]
+			}
+
+			json.dump(workspace_manifest, file_handler, indent = 4, sort_keys = True)
+
+		with (workspace_dir / "README.md").open('wt') as file_handler:
+			file_handler.writelines([
+				"# {}\n".format(gem_name),
+				"<YOUR_GEM_DESCRIPTION>\n",
+				"\n",
+				"# Install\n",
+				"Please choose one of the following options to install this gem in your O3DE (Open 3D Engine) projects:\n",
+				"\n",
+				"## Automatic installation (recommended)\n",
+				"Following steps require to install **O3Tanks**, a version manager for O3DE to streamline the development workflow. You can find additional information at the [official site](https://github.com/loherangrin/o3tanks/).\n",
+				"```\n",
+				"o3tanks install gem https://<this_repository_url>.git --as <any_name>\n",
+				"o3tanks add gem <any_name> --project <project_path>\n",
+				"```\n",
+				"\n",
+				"## Manual installation\n",
+				"1. Clone this repository into a directory of your choice:\n",
+				"```\n",
+				"git clone https://<this_repository_url>.git <gem_dir>\n",
+				"```\n",
+				"2. Register the gem into your engine:\n",
+				"```\n",
+				"<o3de_dir>/scripts/o3de register --gem-path <gem_dir>\n",
+				"```\n",
+				"3. Open the O3DE project manager:\n",
+				"```\n",
+				"<o3de_dir>/build/bin/<config>/o3de\n",
+				"```\n",
+				"4. Select your project, press *Configure gems...* and then search in the gems list for *{}*.\n",
+				"5. Press the toggle widget to activate this gem.\n".format(gem_name),
+				"6. Re-build the project using the project manager or the terminal, according to your platform.\n",
+				"\n",
+				"# Usage\n",
+				"<YOUR_INSTRUCTIONS>\n",
+				"\n",
+				"# Examples\n",
+				"A sample project is contained in the `/examples/` directory. It shows how to setup the gem and its basic usage.\n",
+				"<YOUR_ADDITIONAL_DESCRIPTION>\n",
+				"\n",
+				"# License\n",
+				"<YOUR_LEGAL_INFO>\n"
+			])
+
+
+def change_gem_status(project_dir, gem_reference, active):
+	if gem_reference.type is GemReferenceTypes.ENGINE:
+		cli_option_name = "--gem-name"
+		cli_option_value = gem_reference.value
+	else:
+		cli_option_name = "--gem-path"
+
+		if gem_reference.type is GemReferenceTypes.VERSION:
+			gem_dir = search_gem_path(O3DE_GEMS_DIR, gem_reference.value)
+
+		elif gem_reference.type is GemReferenceTypes.PATH:
+			gem_dir = gem_reference.value
+			if not gem_dir.is_absolute():
+				gem_dir = (project_dir / gem_dir).resolve()
+
+		else:
+			throw_error(Messages.INVALID_GEM_REFERENCE, gem_reference)
+
+		if not is_gem(gem_dir):
+			throw_error(Messages.INVALID_GEM_SOURCE, gem_dir)
+
+		cli_option_value = str(gem_dir)
+
+	if not is_project(project_dir):
+		throw_error(Messages.PROJECT_NOT_FOUND, project_dir)
+
+	action = "enable-gem" if active else "disable-gem"
+	try:
+		result = subprocess.run([
+			O3DE_CLI_FILE, action,
+			cli_option_name, cli_option_value,
+			"--project-path", str(project_dir)
+		])
+
+	except FileNotFoundError as error:
+		if error.filename == O3DE_CLI_FILE.name or (OPERATING_SYSTEM.family is OSFamilies.WINDOWS and error.filename is None):
+			throw_error(Messages.CORRUPTED_ENGINE_SOURCE, error.filename)
+		else:
+			raise error
+
+	if result.returncode != 0:
+		throw_error(Messages.UNCOMPLETED_REGISTRATION, result.returncode, "\n{}\n{}".format(result.stdout, result.stderr))
+
+
 # --- FUNCTIONS (PROJECT) ---
 
 def build_project(config, binary):
@@ -278,28 +430,20 @@ def build_project(config, binary):
 		else:
 			throw_error(Messages.INVALID_BINARY, binary.value)
 
-		project_name = read_json_property(O3DE_PROJECT_SOURCE_DIR / "project.json", JsonPropertyKey(None, None, "project_name"))
+		project_manifest = get_project_manifest_file(O3DE_PROJECT_SOURCE_DIR)
+		project_name = read_json_property(project_manifest, JsonPropertyKey(None, None, "project_name"))
 		if project_name is None:
 			throw_error(Messages.INVALID_PROJECT_NAME)
 
 		target_name = "{}.{}".format(project_name, target_name)
 
-	try:
-		subprocess.run([ O3DE_CLI_FILE, "register", "--this-engine" ], stdout = subprocess.DEVNULL, check = True)
-		subprocess.run([ O3DE_CLI_FILE, "register", "--project-path", str(O3DE_PROJECT_SOURCE_DIR) ], stdout = subprocess.DEVNULL, check = True)
-
-	except FileNotFoundError as error:
-		if error.filename == O3DE_CLI_FILE.name or (OPERATING_SYSTEM.family is OSFamilies.WINDOWS and error.filename is None):
-			throw_error(Messages.CORRUPTED_ENGINE_SOURCE, error.filename)
-		else:
-			raise error
-
-	except subprocess.CalledProcessError as error:
-		throw_error(Messages.UNCOMPLETED_REGISTRATION, error.returncode, "\n{}\n{}".format(error.stdout, error.stderr))
+	register_project(O3DE_CLI_FILE, O3DE_PROJECT_SOURCE_DIR)
+	old_gems = register_gems(O3DE_CLI_FILE, O3DE_PROJECT_SOURCE_DIR, O3DE_GEMS_DIR, O3DE_GEMS_EXTERNAL_DIR, show_unmanaged = True)
 
 	if not O3DE_PROJECT_BUILD_DIR.is_dir() or is_directory_empty(O3DE_PROJECT_BUILD_DIR):
 		generated = generate_configurations(O3DE_PROJECT_SOURCE_DIR, O3DE_PROJECT_BUILD_DIR)
 		if not generated:
+			clear_registered_gems(O3DE_PROJECT_SOURCE_DIR, old_gems)
 			throw_error(Messages.UNCOMPLETED_SOLUTION_GENERATION)
 
 	options = [
@@ -317,23 +461,25 @@ def build_project(config, binary):
 	if result.returncode == 0:
 		delete_openssl_files(O3DE_PROJECT_BUILD_DIR, config)
 
+	clear_registered_gems(O3DE_PROJECT_SOURCE_DIR, old_gems)
+
 	return result.returncode
 
 
-def check_project_settings():
-	project_extra_dir = O3DE_PROJECT_SOURCE_DIR / PROJECT_EXTRA_PATH
+def check_project_settings(project_dir):
+	project_extra_dir = project_dir / PROJECT_EXTRA_PATH
 	if not project_extra_dir.exists():
 		project_extra_dir.mkdir(parents = True)
 	elif not project_extra_dir.is_dir():
 		throw_error(Messages.INVALID_DIRECTORY)
 
-	private_project_extra_dir = O3DE_PROJECT_SOURCE_DIR / PRIVATE_PROJECT_EXTRA_PATH
+	private_project_extra_dir = project_dir / PRIVATE_PROJECT_EXTRA_PATH
 	if not private_project_extra_dir.exists():
 		private_project_extra_dir.mkdir(parents = True)
 	elif not private_project_extra_dir.is_dir():
 		throw_error(Messages.INVALID_DIRECTORY)
 
-	public_project_extra_dir = O3DE_PROJECT_SOURCE_DIR / PUBLIC_PROJECT_EXTRA_PATH
+	public_project_extra_dir = project_dir / PUBLIC_PROJECT_EXTRA_PATH
 	if not public_project_extra_dir.exists():
 		public_project_extra_dir.mkdir(parents = True)
 	elif not public_project_extra_dir.is_dir():
@@ -372,15 +518,16 @@ def clean_project(config, force):
 		return result.returncode
 
 
-def generate_project_configurations(project_name, engine_version):
-	if not is_directory_empty(O3DE_PROJECT_SOURCE_DIR):
+def generate_project(project_name, base_template, engine_version, project_dir = O3DE_PROJECT_SOURCE_DIR):
+	if not is_directory_empty(project_dir):
 		throw_error(Messages.PROJECT_DIR_NOT_EMPTY)
 
 	try:
 		result = subprocess.run([
 				O3DE_CLI_FILE, "create-project",
 				"--project-name", project_name,
-				"--project-path", O3DE_PROJECT_SOURCE_DIR
+				"--project-path", project_dir,
+				"--template-name", base_template
 			])
 
 	except FileNotFoundError as error:
@@ -392,11 +539,12 @@ def generate_project_configurations(project_name, engine_version):
 	if result.returncode != 0:
 		throw_error(Messages.UNCOMPLETED_INIT_PROJECT)
 
-	write_project_setting(Settings.ENGINE.value, None, None, engine_version)
+	if engine_version is not None:
+		write_project_setting(project_dir, Settings.ENGINE.value, None, None, engine_version)
 
 
-def read_project_setting(setting_section, setting_index, setting_name):
-	project_extra_dir = O3DE_PROJECT_SOURCE_DIR / PROJECT_EXTRA_PATH
+def read_project_setting(project_dir, setting_section, setting_index, setting_name):
+	project_extra_dir = project_dir / PROJECT_EXTRA_PATH
 	if not project_extra_dir.is_dir():
 		throw_error(Messages.SETTINGS_NOT_FOUND)
 
@@ -410,11 +558,15 @@ def read_project_setting(setting_section, setting_index, setting_name):
 			for key in EngineSettings:
 				expected_setting_keys.append(key.value)
 
+		if (setting_key.section == Settings.GEMS.value) or (setting_key.section is None):
+			for key in GemSettings:
+				expected_setting_keys.append(key.value)		
+
 	n_expected_setting_keys = len(expected_setting_keys)
 	if n_expected_setting_keys == 0:
 		throw_error(Messages.INVALID_SETTING_SECTION, setting_section)
 	elif n_expected_setting_keys == 1:
-		settings_file = select_project_settings_file(O3DE_PROJECT_SOURCE_DIR, setting_key)
+		settings_file = select_project_settings_file(project_dir, setting_key)
 
 		setting_value = read_json_property(settings_file, setting_key)
 		if setting_value is None:
@@ -422,7 +574,7 @@ def read_project_setting(setting_section, setting_index, setting_name):
 
 		print_msg(Level.INFO, setting_value)
 	else:
-		setting_values = read_project_setting_values(O3DE_PROJECT_SOURCE_DIR, setting_key.section, setting_key.index)
+		setting_values = read_project_setting_values(project_dir, setting_key.section, setting_key.index)
 
 		output = {}
 		for expected_setting_key in expected_setting_keys:
@@ -453,9 +605,10 @@ def read_project_setting(setting_section, setting_index, setting_name):
 			print_msg(Level.INFO, "{} = {}".format(key, output[key]))
 
 
-def write_project_setting(setting_section, setting_index, setting_name, setting_value, show_preview = False):
+def write_project_setting(project_dir, setting_section, setting_index, setting_name, setting_value, show_preview = False, force = False):
 	setting_key = get_setting_key(setting_section, setting_index, setting_name)
-	current_setting_values = read_project_setting_values(O3DE_PROJECT_SOURCE_DIR, setting_key.section, setting_key.index)
+	current_setting_values = read_project_setting_values(project_dir, setting_key.section, setting_key.index)
+
 
 	changed_settings = {}
 	if setting_key.name is not None:
@@ -465,7 +618,7 @@ def write_project_setting(setting_section, setting_index, setting_name, setting_
 			throw_error(Messages.MISSING_SETTING_KEY)
 		elif setting_key.section == Settings.ENGINE.value:
 			if setting_value is not None:
-				result_type, repository = get_engine_repository_from_source(O3DE_ENGINE_SOURCE_DIR)
+				result_type, repository = get_repository_from_source(O3DE_ENGINE_SOURCE_DIR)
 				if result_type is not RepositoryResultType.OK:
 					throw_error(Messages.INVALID_REPOSITORY)
 			else:
@@ -477,6 +630,137 @@ def write_project_setting(setting_section, setting_index, setting_name, setting_
 				EngineSettings.BRANCH.value.name: repository.branch,
 				EngineSettings.REVISION.value.name: repository.revision
 			}
+
+		elif setting_section == Settings.GEMS.value:
+			if setting_value is not None:
+				gem_reference = parse_gem_reference(setting_value, False)
+
+				if gem_reference.type is GemReferenceTypes.ENGINE:
+					if '/' in gem_reference.value:
+						gem_name = gem_reference.value[:-2]
+						gem_status = (gem_reference.value[-1] == '1')
+					else:
+						gem_name = gem_reference.value
+						gem_status = True
+					change_gem_status(project_dir, GemReference(GemReferenceTypes.ENGINE, gem_name), gem_status)
+					return
+
+				elif gem_reference.type is GemReferenceTypes.PATH:
+					is_absolute_path = gem_reference.value.is_absolute()
+					if is_absolute_path:
+						path_property = GemSettings.ABSOLUTE_PATH.value.name
+						parent_gem_dir = get_external_gem_path(O3DE_GEMS_EXTERNAL_DIR, gem_reference.value)
+					else:
+						path_property = GemSettings.RELATIVE_PATH.value.name
+						parent_gem_dir = (project_dir / gem_reference.value).resolve()
+
+					gem_dir = search_gem_path(parent_gem_dir)
+					if gem_dir is None:
+						throw_error(Messages.INVALID_GEM_SOURCE, gem_dir)
+
+					if not is_absolute_path:
+						new_setting_value = gem_reference.print()
+					else:
+						host_gem_dir = gem_reference.value
+						if gem_dir != parent_gem_dir:
+							host_gem_dir /= gem_dir.relative_to(parent_gem_dir)
+
+						new_setting_value = str(host_gem_dir)
+
+					existing_gems = current_setting_values.get(Settings.GEMS.value)
+					if existing_gems is not None:
+						for existing_gem in existing_gems:
+							existing_gem_path = existing_gem.get(path_property)
+
+							if new_setting_value == existing_gem_path:
+								throw_error(Messages.GEM_ALREADY_ADDED)
+
+					new_setting_values = {
+						path_property: new_setting_value
+					}
+
+					gem_references = [ GemReference(GemReferenceTypes.PATH, gem_dir) ]
+
+				elif gem_reference.type is GemReferenceTypes.VERSION:
+					parent_gem_dir = get_gem_path(O3DE_GEMS_DIR, setting_value)
+					if not parent_gem_dir.is_dir():
+						throw_error(Messages.VERSION_NOT_INSTALLED, setting_value)
+
+					gem_dir = search_gem_path(parent_gem_dir)
+					if gem_dir is None:
+						throw_error(Messages.INVALID_GEM_SOURCE, parent_gem_dir)
+
+					result_type, repository = get_repository_from_source(parent_gem_dir)
+					if result_type is not RepositoryResultType.OK:
+						throw_error(Messages.INVALID_REPOSITORY)
+
+					existing_gems = current_setting_values.get(Settings.GEMS.value)
+					if existing_gems is not None:
+						for existing_gem in existing_gems:
+							existing_gem_version = existing_gem.get(GemSettings.VERSION.value.name)
+							same_version = (setting_value == existing_gem_version)
+							same_repository = (repository.url == existing_gem.get(GemSettings.REPOSITORY.value.name))
+							same_branch = (repository.branch == existing_gem.get(GemSettings.BRANCH.value.name))
+							same_revision = (repository.revision == existing_gem.get(GemSettings.REVISION.value.name))
+
+							if same_version:
+								if same_repository and same_branch and same_revision:
+									throw_error(Messages.GEM_ALREADY_ADDED)
+								else:
+									throw_error(Messages.GEM_DIFFERENT_VALUES, "version name", setting_value, "repository information")
+
+							elif same_repository:
+								throw_error(Messages.GEM_DIFFERENT_VALUES, "repository", repository.url, "version name ({})".format(existing_gem_version))
+
+					new_setting_values = {
+						GemSettings.VERSION.value.name: setting_value,
+						GemSettings.REPOSITORY.value.name: repository.url,
+						GemSettings.BRANCH.value.name: repository.branch,
+						GemSettings.REVISION.value.name: repository.revision
+					}
+
+					gem_references = [ GemReference(GemReferenceTypes.PATH, gem_dir) ]
+
+				else:
+					throw_error(Messages.INVALID_GEM_REFERENCE, gem_reference.type)
+
+			else:
+				if setting_key.is_all():
+					new_setting_values = None
+				else:
+					new_setting_values = {}
+					for property in GemSettings:
+						new_setting_values[property.value.name] = None
+
+				section_values = current_setting_values.get(setting_key.section)
+				if section_values is None:
+					gem_references = None
+				else:
+					if isinstance(section_values, dict):
+						section_values = [ section_values ]
+
+					if force:
+						gem_references = None
+					else:
+						gem_references = []
+						for index_values in section_values:
+							gem_absolute_path = index_values.get(GemSettings.ABSOLUTE_PATH.value.name)
+							if gem_absolute_path is not None:
+								parent_gem_dir = get_external_gem_path(O3DE_GEMS_EXTERNAL_DIR, pathlib.Path(gem_absolute_path))
+								gem_dir = search_gem_path(parent_gem_dir)
+
+							else:
+								gem_version = index_values.get(GemSettings.VERSION.value.name)
+								if gem_version is None:
+									continue
+
+								gem_dir = search_gem_path(O3DE_GEMS_DIR, gem_version)
+
+							if gem_dir is None:
+								throw_error(Messages.INVALID_GEM_SOURCE, gem_dir)
+
+							gem_reference = GemReference(GemReferenceTypes.PATH, gem_dir)
+							gem_references.append(gem_reference)
 
 		else:
 			throw_error(Messages.INVALID_SETTING_SECTION, setting_section)
@@ -506,7 +790,7 @@ def write_project_setting(setting_section, setting_index, setting_name, setting_
 				continue
 
 			new_setting_key = JsonPropertyKey(setting_key.section, new_setting_index, new_setting_name)
-			settings_file = select_project_settings_file(O3DE_PROJECT_SOURCE_DIR, new_setting_key)
+			settings_file = select_project_settings_file(project_dir, new_setting_key)
 
 			if settings_file not in changed_settings:
 				changed_settings[settings_file] = {}
@@ -517,7 +801,7 @@ def write_project_setting(setting_section, setting_index, setting_name, setting_
 			for index, index_values in enumerate(section_values):
 				for name, current_setting_value in index_values.items():
 					new_setting_key = JsonPropertyKey(section, index, name)
-					settings_file = select_project_settings_file(O3DE_PROJECT_SOURCE_DIR, new_setting_key)
+					settings_file = select_project_settings_file(project_dir, new_setting_key)
 
 					if settings_file not in changed_settings:
 						changed_settings[settings_file] = {}
@@ -543,7 +827,7 @@ def write_project_setting(setting_section, setting_index, setting_name, setting_
 		if not ask_for_confirmation(Messages.SAVE_QUESTION):
 			return False
 
-	check_project_settings()
+	check_project_settings(project_dir)
 
 	for settings_file, file_changes in changed_settings.items():
 		has_no_value = True
@@ -572,12 +856,28 @@ def write_project_setting(setting_section, setting_index, setting_name, setting_
 
 		write_json_property(settings_file, new_setting_key, new_setting_values)
 
+	if (
+		setting_key.section == Settings.GEMS.value and
+		setting_key.name is None and
+		gem_references is not None and
+		not force
+	):
+		gem_active = (setting_value is not None)
+		gem_dirs = []
+		for gem_reference in gem_references:
+			change_gem_status(project_dir, gem_reference, gem_active)
+
+			if gem_reference.type is GemReferenceTypes.PATH:
+				gem_dirs.append(gem_reference.print())
+
+		clear_registered_gems(project_dir, None, gem_dirs)
+
 	if setting_value is not None:
 		return
 
 	purge_index = setting_key.index
 	while True:
-		written_setting_values = read_project_setting_values(O3DE_PROJECT_SOURCE_DIR, setting_key.section, None)
+		written_setting_values = read_project_setting_values(project_dir, setting_key.section, None)
 		if setting_key.section not in written_setting_values:
 			break
 
@@ -601,8 +901,8 @@ def write_project_setting(setting_section, setting_index, setting_name, setting_
 
 		if has_no_value:
 			settings_files = [
-				O3DE_PROJECT_SOURCE_DIR / PRIVATE_PROJECT_SETTINGS_PATH,
-				O3DE_PROJECT_SOURCE_DIR / PUBLIC_PROJECT_SETTINGS_PATH
+				project_dir / PRIVATE_PROJECT_SETTINGS_PATH,
+				project_dir / PUBLIC_PROJECT_SETTINGS_PATH
 			]
 
 			for settings_file in settings_files:
@@ -682,11 +982,20 @@ def main():
 		if target == Targets.ENGINE:
 			generate_engine_configurations()
 
+		elif target == Targets.GEM:
+			gem_name = deserialize_arg(3, str)
+			base_template = deserialize_arg(4, str)
+			has_examples = deserialize_arg(5, bool)
+			engine_version = deserialize_arg(6, str) if has_examples else None
+
+			generate_gem(gem_name, base_template, has_examples, engine_version)
+
 		elif target == Targets.PROJECT:
 			project_name = deserialize_arg(3, str)
-			engine_version = deserialize_arg(4, str)
+			base_template = deserialize_arg(4, str)
+			engine_version = deserialize_arg(5, str)
 
-			generate_project_configurations(project_name, engine_version)
+			generate_project(project_name, base_template, engine_version)
 
 		else:
 			throw_error(Messages.INVALID_TARGET, target.value)
@@ -700,15 +1009,16 @@ def main():
 			clear = deserialize_arg(7, bool)
 
 			if clear:
-				write_project_setting(setting_section, setting_index, setting_name, None, False)
+				force = deserialize_arg(9, bool)
+				write_project_setting(O3DE_PROJECT_SOURCE_DIR, setting_section, setting_index, setting_name, None, False, force)
 			elif setting_value is None:
-				read_project_setting(setting_section, setting_index, setting_name)
+				read_project_setting(O3DE_PROJECT_SOURCE_DIR, setting_section, setting_index, setting_name)
 			else:
 				preview = deserialize_arg(8, bool)
 				if preview is None:
 					preview = False
 
-				write_project_setting(setting_section, setting_index, setting_name, setting_value, preview)
+				write_project_setting(O3DE_PROJECT_SOURCE_DIR, setting_section, setting_index, setting_name, setting_value, preview, False)
 
 		else:
 			throw_error(Messages.INVALID_TARGET, target.value)

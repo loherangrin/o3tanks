@@ -28,9 +28,24 @@ class O3DE_Configs(ObjectEnum):
 	RELEASE = "release"
 
 
+class O3DE_GemTemplates(ObjectEnum):
+	ASSETS_ONLY = "AssetGem"
+	CODE_AND_ASSETS = "DefaultGem"
+
+
+class O3DE_GemTypes(ObjectEnum):
+	ASSETS_ONLY = "asset"
+	CODE_AND_ASSETS = "code"
+
+
 class O3DE_ProjectBinaries(ObjectEnum):
 	CLIENT = "client"
 	SERVER = "server"
+
+
+class O3DE_ProjectTemplates(ObjectEnum):
+	MINIMAL = "MinimalProject"
+	STANDARD = "DefaultProject"
 
 
 # --- FUNCTIONS ---
@@ -59,6 +74,9 @@ else:
 	O3DE_ENGINE_BIN_DIR = O3DE_ENGINE_BUILD_DIR / "bin"
 	O3DE_ENGINE_SCRIPTS_DIR = O3DE_ENGINE_SOURCE_DIR / "scripts"
 O3DE_CLI_FILE = O3DE_ENGINE_SCRIPTS_DIR / get_script_filename("o3de")
+
+O3DE_GEMS_DIR = init_from_env("O3DE_GEMS_DIR", pathlib.Path, O3DE_ROOT_DIR / "gems")
+O3DE_GEMS_EXTERNAL_DIR = init_from_env("O3DE_GEMS_EXTERNAL_DIR", pathlib.Path, O3DE_GEMS_DIR / ".external")
 
 O3DE_PACKAGES_DIR = init_from_env("O3DE_PACKAGES_DIR", pathlib.Path, O3DE_ROOT_DIR / "packages")
 

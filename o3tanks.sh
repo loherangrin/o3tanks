@@ -498,12 +498,16 @@ init_globals()
 	esac
 	readonly DISPLAY_ID="${display_id}"
 
+	readonly COMMANDS_ADD='add'
 	readonly COMMANDS_BUILD='build'
 	readonly COMMANDS_CLEAN='clean'
 	readonly COMMANDS_INIT='init'
 	readonly COMMANDS_OPEN='open'
+	readonly COMMANDS_REMOVE='remove'
 	readonly COMMANDS_RUN='run'
 	readonly COMMANDS_SETTINGS='settings'
+
+	readonly SUBCOMMANDS_GEM='gem'
 
 	readonly IMAGE_PREFIX='o3tanks'
 	readonly IMAGES_CLI='cli'
@@ -529,6 +533,7 @@ init_globals()
 	readonly OS_NAMES_UBUNTU='ubuntu'
 
 	readonly SHORT_OPTION_PROJECT='p'
+	readonly LONG_OPTION_PATH='path'
 	readonly LONG_OPTION_PROJECT='project'
 
 	local host_os_family
@@ -628,6 +633,8 @@ init_globals()
 	readonly REAL_USER_GID="${real_user_gid}"
 
 	readonly O3DE_ROOT_DIR="/home/${USER_NAME}/o3de"
+	readonly O3DE_GEMS_DIR="${O3DE_ROOT_DIR}/gems"
+	readonly O3DE_GEMS_EXTERNAL_DIR="${O3DE_GEMS_DIR}/.external"
 	readonly O3DE_PROJECT_DIR="${O3DE_ROOT_DIR}/project"
 
 	readonly RECIPES_PATH='recipes'
@@ -681,23 +688,63 @@ run_cli()
 
 	local project_mount
 	case ${1:-} in
-		("${COMMANDS_INIT}"|"${COMMANDS_BUILD}"|"${COMMANDS_CLEAN}"|"${COMMANDS_OPEN}"|"${COMMANDS_RUN}"|"${COMMANDS_SETTINGS}")
-			local command="${1}"
+		("${COMMANDS_ADD}"|"${COMMANDS_BUILD}"|"${COMMANDS_CLEAN}"|"${COMMANDS_INIT}"|"${COMMANDS_OPEN}"|"${COMMANDS_REMOVE}"|"${COMMANDS_RUN}"|"${COMMANDS_SETTINGS}")
+			local command
+			local subcommand
+			case ${1:-} in
+				("${COMMANDS_ADD}"|"${COMMANDS_INIT}"|"${COMMANDS_REMOVE}")
+					command="${1}"
+					subcommand="${2}"
+					shift
+					;;
+
+				(*)
+					command="${1}"
+					subcommand=''
+					;;
+			esac
+			shift
+
 			local new_args=''
 
 			local project_dir=''
-			local is_project_option='false'
+			local project_option=''
 
-			shift
+			local was_option_name='false'
+			local was_option_value='false'
+			local first_argument=''
+
 			for arg in $@; do
-				if [ "${is_project_option}" = 'true' ] && [ -z "${project_dir}" ]; then
+				if [ -n "${project_option}" ] && [ -z "${project_dir}" ]; then
 					project_dir="${arg}"
 					continue
 				fi
 
+				case ${command} in
+					("${COMMANDS_ADD}"|"${COMMANDS_REMOVE}")
+						if [ "${subcommand}" = "${SUBCOMMANDS_GEM}" ] && [ -z "${first_argument}" ]; then
+							case ${arg} in
+								('-'*)
+									was_option_name='true'
+									was_option_value='false'
+									;;
+
+								(*)
+									if [ "${was_option_name}" = 'false' ] || [ "${was_option_value}" = 'true' ]; then
+										first_argument="${arg}"
+										continue
+									else
+										was_option_value='true'
+									fi
+									;;
+							esac
+						fi
+						;;
+				esac
+
 				case ${arg} in
-					("-${SHORT_OPTION_PROJECT}"|"--${LONG_OPTION_PROJECT}")
-						is_project_option='true'
+					("-${SHORT_OPTION_PROJECT}"|"--${LONG_OPTION_PROJECT}"|"--${LONG_OPTION_PATH}")
+						project_option="${arg}"
 						;;
 
 					(*)
@@ -706,8 +753,18 @@ run_cli()
 				esac
 			done
 
-			if [ "${is_project_option}" = 'false' ]; then
+			if [ -z "${project_option}" ]; then
 				project_dir='.'
+
+				case ${command} in
+					("${COMMANDS_INIT}")
+						project_option="--${LONG_OPTION_PATH}"
+						;;
+
+					(*)
+						project_option="--${LONG_OPTION_PROJECT}"
+						;;
+				esac
 			fi
 
 			project_dir=$(to_absolute_path "${project_dir}" 'true')
@@ -715,7 +772,24 @@ run_cli()
 				throw_error "${MESSAGES_INVALID_DIRECTORY}" "${project_dir}"
 			fi
 
-			set -- "${command}" "--${LONG_OPTION_PROJECT}" "${project_dir}" ${new_args}
+			if [ -n "${first_argument}" ]; then
+				case ${command} in
+					("${COMMANDS_ADD}"|"${COMMANDS_REMOVE}")
+						if [ "${subcommand}" = "${SUBCOMMANDS_GEM}" ]; then
+							local external_gem_dir="${first_argument}"
+							if [ -d "${external_gem_dir}" ]; then
+								if [ -f "${external_gem_dir}/gem.json" ] || [ -f "${external_gem_dir}/repo.json" ]; then
+									first_argument=$(to_absolute_path "${external_gem_dir}" 'true')
+								fi
+							fi
+						fi
+						;;
+				esac
+
+				new_args="${first_argument} ${new_args}"
+			fi
+
+			set -- ${command} ${subcommand} "${project_option}" "${project_dir}" ${new_args}
 
 			project_mount="--mount type=bind,source=${project_dir},destination=${O3DE_PROJECT_DIR}"
 			;;	
