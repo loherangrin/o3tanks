@@ -329,6 +329,13 @@ def check_requirements(resume_command):
 		for command in commands.application_packages:
 			print_msg(Level.INFO, "  {}".format(command))
 
+	if len(commands.other_commands) > 0:
+		print_msg(Level.INFO, '')
+		print_msg(Level.INFO, Messages.INSTALL_OTHER_COMMANDS)
+
+		for command in commands.other_commands:
+			print_msg(Level.INFO, "  sudo {}".format(command))
+
 	print_msg(Level.INFO, '')
 	print_msg(Level.INFO, Messages.RUN_RESUME_COMMAND)
 	print_msg(Level.INFO, resume_command)
