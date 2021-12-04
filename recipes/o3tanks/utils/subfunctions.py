@@ -57,11 +57,15 @@ def clear_registered_gems(project_dir, restore_gems = None, filter_gems = None):
 	write_json_property(project_manifest_file, gems_key, new_gems, False)
 
 
-def get_build_config_path(build_dir, config):
+def get_build_path(root_dir, operating_system = OPERATING_SYSTEM):
+	return root_dir / "build" / operating_system.family.value
+
+
+def get_build_config_path(build_dir, config, operating_system = OPERATING_SYSTEM):
 	return pathlib.Path("{}/bin/{}".format(build_dir, config.value))
 
-def get_install_config_path(install_dir, config):
-	return pathlib.Path("{}/bin/Linux/{}".format(install_dir, config.value))
+def get_install_config_path(install_dir, config, operating_system = OPERATING_SYSTEM):
+	return pathlib.Path("{}/bin/{}/{}/Default".format(install_dir, operating_system.family.value, config.value))
 
 
 def get_external_gem_path(external_gems_dir, gem_dir):
@@ -140,6 +144,26 @@ def get_script_filename(name):
 		throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM.family)
 
 	return "{}.{}".format(name, extension)
+
+
+def has_build_config(build_dir, config):
+	config_dir = get_build_config_path(build_dir, config)
+
+	return has_configuration(config_dir)
+
+
+def has_install_config(install_dir, config):
+	config_dir = get_install_config_path(install_dir, config)
+
+	return has_configuration(config_dir)
+
+
+def has_configuration(config_dir):
+	return config_dir.is_dir() and (
+		(config_dir / get_binary_filename("Editor")).is_file() or
+		any(config_dir.glob(get_binary_filename("**/*.GameLauncher"))) or
+		any(config_dir.glob(get_binary_filename("**/*.ServerLauncher")))
+	)
 
 
 def is_commit(reference):
@@ -343,21 +367,6 @@ def register_gems(cli_file, project_dir, gems_dir, external_gems_dir, show_unman
 	return restore_external_dirs
 
 
-def register_project(cli_file, project_dir):
-	try:
-		subprocess.run([ cli_file, "register", "--this-engine" ], stdout = subprocess.DEVNULL, check = True)
-		subprocess.run([ cli_file, "register", "--project-path", project_dir ], stdout = subprocess.DEVNULL, check = True)
-
-	except FileNotFoundError as error:
-		if error.filename == cli_file.name or (OPERATING_SYSTEM.family is OSFamilies.WINDOWS and error.filename is None):
-			throw_error(Messages.CORRUPTED_ENGINE_SOURCE)
-		else:
-			raise error
-
-	except subprocess.CalledProcessError as error:
-		throw_error(Messages.UNCOMPLETED_REGISTRATION, error.returncode, "\n{}\n{}".format(error.stdout, error.stderr))
-
-
 def search_gem_index(project_dir, gem_reference):
 	project_extra_dir = project_dir / PROJECT_EXTRA_PATH
 	if not project_extra_dir.is_dir():
@@ -414,6 +423,7 @@ def select_project_settings_file(project_dir, setting_key):
 
 	if (
 		no_index_setting_key == EngineSettings.VERSION.value or
+		no_index_setting_key == EngineSettings.WORKFLOW.value or
 		no_index_setting_key == GemSettings.VERSION.value or
 		no_index_setting_key == GemSettings.ABSOLUTE_PATH.value
 	):

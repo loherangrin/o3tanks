@@ -26,12 +26,36 @@ import time
 
 # -- SUBFUNCTIONS ---
 
-def run_asset_processor(config):
-	asset_processor_file = O3DE_PROJECT_BIN_DIR / config.value / get_binary_filename("AssetProcessor")
-	if not asset_processor_file.is_file():
-		throw_error(Messages.MISSING_BINARY, str(asset_processor_file), config.value, "")
+def get_engine_binary(engine_config, engine_workflow, binary_name):
+	if engine_workflow is O3DE_BuildWorkflows.ENGINE_CENTRIC:
+		binary_dir = get_build_config_path(O3DE_ENGINE_BUILD_DIR, engine_config)
+	elif engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK:
+		binary_dir = get_install_config_path(O3DE_ENGINE_INSTALL_DIR, engine_config)
+	elif engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SOURCE:
+		binary_dir = get_build_config_path(O3DE_PROJECT_BUILD_DIR, engine_config)
+	else:
+		throw_error(Messages.INVALID_BUILD_WORKFLOW, engine_workflow)
 
-	asset_processor = run_binary(asset_processor_file, False)
+	return (binary_dir / get_binary_filename(binary_name))
+
+
+def get_project_binary(engine_config, engine_workflow, binary_name):
+	if engine_workflow is O3DE_BuildWorkflows.ENGINE_CENTRIC:
+		binary_dir = get_build_config_path(O3DE_ENGINE_BUILD_DIR, engine_config)
+	elif engine_workflow in [ O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK, O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SOURCE ]:
+		binary_dir = get_build_config_path(O3DE_PROJECT_BUILD_DIR, engine_config)
+	else:
+		throw_error(Messages.INVALID_BUILD_WORKFLOW, engine_workflow)
+
+	return (binary_dir / get_binary_filename(binary_name))
+
+
+def run_asset_processor(engine_config, engine_workflow):
+	asset_processor_file = get_engine_binary(engine_config, engine_workflow, "AssetProcessor")
+	if not asset_processor_file.is_file():
+		throw_error(Messages.MISSING_BINARY, str(asset_processor_file), engine_config.value, "")
+
+	asset_processor = run_binary(engine_workflow, asset_processor_file, False)
 
 	time.sleep(1)
 	if asset_processor.poll() is not None:
@@ -46,12 +70,17 @@ def run_asset_processor(config):
 	return asset_processor
 
 
-def run_binary(binary_file, wait = True):
+def run_binary(engine_workflow, binary_file, wait = True):
+	if engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK:
+		engine_dir = O3DE_ENGINE_INSTALL_DIR
+	else:
+		engine_dir = O3DE_ENGINE_SOURCE_DIR
+
 	command = [
 		binary_file,
-		"--engine-path={}".format(O3DE_ENGINE_SOURCE_DIR),
+		"--engine-path={}".format(engine_dir),
 		"--project-path={}".format(O3DE_PROJECT_SOURCE_DIR),
-		"--regset=/Amazon/AzCore/Bootstrap/engine_path={}".format(O3DE_ENGINE_SOURCE_DIR),
+		"--regset=/Amazon/AzCore/Bootstrap/engine_path={}".format(engine_dir),
 		"--regset=/Amazon/AzCore/Bootstrap/project_path={}".format(O3DE_PROJECT_SOURCE_DIR)
 	]
 
@@ -67,16 +96,16 @@ def run_binary(binary_file, wait = True):
 # --- FUNCTIONS (PROJECT) ---
 
 def open_project(config):
-	binary_file = O3DE_PROJECT_BIN_DIR / config.value / get_binary_filename("Editor")
+	engine_workflow = get_build_workflow(O3DE_ENGINE_SOURCE_DIR, O3DE_ENGINE_BUILD_DIR, O3DE_ENGINE_INSTALL_DIR)
+	binary_file = get_engine_binary(config, engine_workflow, "Editor")
 	if not binary_file.is_file():
 		throw_error(Messages.MISSING_BINARY, str(binary_file), config.value, "")
 
-	register_project(O3DE_CLI_FILE, O3DE_PROJECT_SOURCE_DIR)
 	old_gems = register_gems(O3DE_CLI_FILE, O3DE_PROJECT_SOURCE_DIR, O3DE_GEMS_DIR, O3DE_GEMS_EXTERNAL_DIR, show_unmanaged = True)
 
-	asset_processor = run_asset_processor(config)
+	asset_processor = run_asset_processor(config, engine_workflow)
 
-	result = run_binary(binary_file)
+	result = run_binary(engine_workflow, binary_file)
 
 	if asset_processor is not None:
 		if result.returncode == 0:
@@ -103,14 +132,14 @@ def run_project(binary, config):
 	else:
 		throw_error(Messages.INVALID_BINARY, binary.value)
 
-	binary_file = O3DE_PROJECT_BIN_DIR / config.value / ("{}.{}".format(project_name, binary_name))	
+	engine_workflow = get_build_workflow(O3DE_ENGINE_SOURCE_DIR, O3DE_ENGINE_BUILD_DIR, O3DE_ENGINE_INSTALL_DIR)
+	binary_file = get_project_binary(config, engine_workflow, "{}.{}".format(project_name, binary_name))
 	if not binary_file.is_file():
 		throw_error(Messages.MISSING_BINARY, str(binary_file), config.value, binary.value)
 
-	register_project(O3DE_CLI_FILE, O3DE_PROJECT_SOURCE_DIR)
 	old_gems = register_gems(O3DE_CLI_FILE, O3DE_PROJECT_SOURCE_DIR, O3DE_GEMS_DIR, O3DE_GEMS_EXTERNAL_DIR, show_unmanaged = True)
 
-	result = run_binary(binary_file, True)
+	result = run_binary(engine_workflow, binary_file, True)
 	error_code = result.returncode
 	if has_gui and (error_code == -6):
 		throw_error(Messages.UNREACHABLE_X11_DISPLAY, DISPLAY_ID, REAL_USER.uid)

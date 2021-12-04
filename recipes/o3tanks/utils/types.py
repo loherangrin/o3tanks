@@ -128,7 +128,7 @@ class DependencyResultType(AutoEnum):
  
 class DependencyResult(typing.NamedTuple):
 	type: DependencyResultType
-	value: str = None
+	value: any = None
 
 
 class User(typing.NamedTuple):

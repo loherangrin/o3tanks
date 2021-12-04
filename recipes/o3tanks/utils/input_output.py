@@ -36,6 +36,7 @@ class Messages(AutoEnum):
 	ADD_GEM_REBUILD = enum.auto()
 	BINARY_ERROR = enum.auto()
 	BINDING_DIFFERENT_REPOSITORY = enum.auto()
+	BINDING_DIFFERENT_WORKFLOW = enum.auto()
 	BINDING_INSTALL_NOT_FOUND = enum.auto()
 	BINDING_INVALID_REPOSITORY = enum.auto()
 	BUILD_IMAGE_FROM_ARCHIVE = enum.auto()
@@ -64,11 +65,13 @@ class Messages(AutoEnum):
 	GEM_ALREADY_ADDED = enum.auto()
 	GEM_DIFFERENT_VALUES = enum.auto()
 	GEM_NOT_ACTIVE = enum.auto()
+	INCOMPATIBLE_BUILD_PROJECT_AND_WORKFLOW = enum.auto()
 	INCOMPATIBLE_FORK_OPTIONS = enum.auto()
 	INCOMPATIBLE_GEM_SETTINGS = enum.auto()
 	INCOMPATIBLE_REVISION_OPTIONS = enum.auto()
 	INIT_COMPLETED = enum.auto()
 	INSTALL_ALREADY_EXISTS = enum.auto()
+	INSTALL_ALREADY_EXISTS_DIFFERENT_WORKFLOW = enum.auto()
 	INSTALL_AND_CONFIG_ALREADY_EXISTS = enum.auto()
 	INSTALL_ENGINE_COMPLETED = enum.auto()
 	INSTALL_GEM_COMPLETED = enum.auto()
@@ -80,6 +83,7 @@ class Messages(AutoEnum):
 	INSTALL_OTHER_COMMANDS = enum.auto()
 	INVALID_ANSWER = enum.auto()
 	INVALID_BINARY = enum.auto()
+	INVALID_BUILD_WORKFLOW = enum.auto()
 	INVALID_COMMAND = enum.auto()
 	INVALID_COMMIT = enum.auto()
 	INVALID_CONFIG = enum.auto()
@@ -100,10 +104,12 @@ class Messages(AutoEnum):
 	INVALID_CURRENT_USER = enum.auto()
 	INVALID_GPU = enum.auto()
 	INVALID_IMAGE_IN_NO_CONTAINERS_MODE = enum.auto()
-	INVALID_INSTALL_OPTIONS_REMOVE = enum.auto()
+	INVALID_INSTALL_OPTIONS_INCREMENTAL = enum.auto()
+	INVALID_INSTALL_OPTIONS_SAVE_IMAGES = enum.auto()
 	INVALID_LFS = enum.auto()
 	INVALID_LOCAL_BRANCH = enum.auto()
 	INVALID_REMOTE_BRANCH = enum.auto()
+	INVALID_DEPENDENCY_RESULT_VALUE = enum.auto()
 	INVALID_OPERATING_SYSTEM = enum.auto()
 	INVALID_OPTION = enum.auto()
 	INVALID_PACKAGE_MANAGER_RESULT = enum.auto()
@@ -144,6 +150,8 @@ class Messages(AutoEnum):
 	MISSING_GPU = enum.auto()
 	MISSING_INSTALL_AND_CONFIG = enum.auto()
 	MISSING_INSTALL_ENGINE = enum.auto()
+	MISSING_INSTALL_ENGINE_CONFIG = enum.auto()
+	MISSING_INSTALL_ENGINE_PROJECT= enum.auto()
 	MISSING_INSTALL_GEM = enum.auto()
 	MISSING_MODULE = enum.auto()
 	MISSING_PACKAGES = enum.auto()
@@ -268,7 +276,9 @@ def get_message_text(message_id, *args, **kwargs):
 	elif message_id == Messages.BINARY_ERROR:
 		message_text = "An error occurred while executing a required binary: {}"
 	elif message_id == Messages.BINDING_DIFFERENT_REPOSITORY:
-		message_text = "Installed {} differs from the one required by the project. Please use '" + print_command(CliCommands.SETTINGS) + "' to clear the engine version and then re-install it with a different name"
+		message_text = "Repository of installed {0} differs from the one required by the project. Please use '" + print_command(CliCommands.SETTINGS) + "' to clear the {0} version and then re-install it with a different name"
+	elif message_id == Messages.BINDING_DIFFERENT_WORKFLOW:
+		message_text = "Installed engine uses a different build workflow ({}) rather than the one required by the project ({}). Please use '" + print_command(CliCommands.SETTINGS) + "' to clear the worklow or change the engine version to a compatible one"
 	elif message_id == Messages.BINDING_INSTALL_NOT_FOUND:
 		message_text = "Project is bound to a non-existing {}. Please use '" + print_command(CliCommands.SETTINGS) + "' to clear it or use '" + print_command(CliCommands.INSTALL) + "' to force a new re-installation"
 	elif message_id == Messages.BINDING_INVALID_REPOSITORY:
@@ -325,6 +335,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Another gem is using the same {} '{}', but with a different {}. Please remove it before installing this new one"
 	elif message_id == Messages.GEM_NOT_ACTIVE:
 		message_text = "No '{}' gem was found in this project. It may has been alredy disabled"
+	elif message_id == Messages.INCOMPATIBLE_BUILD_PROJECT_AND_WORKFLOW:
+		message_text = "Command '" + print_command(CliCommands.BUILD) + "' cannot be used when build workflow is set to '{}'. Please use '" + print_command(CliCommands.SETTINGS) + "' to point to another engine version and then try again"
 	elif message_id == Messages.INCOMPATIBLE_FORK_OPTIONS:
 		message_text = "Option '" + print_option(LongOptions.FORK) + "' and '" + print_option(LongOptions.REPOSITORY) + "' are incompatible. Please set only one"
 	elif message_id == Messages.INCOMPATIBLE_GEM_SETTINGS:
@@ -337,8 +349,10 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Insert a name for the new installation"
 	elif message_id == Messages.INSTALL_ALREADY_EXISTS:
 		message_text = "{} version '{}' is already installed. Please use '" + print_command(CliCommands.REFRESH) + "' to check if updates are available"
+	elif message_id == Messages.INSTALL_ALREADY_EXISTS_DIFFERENT_WORKFLOW:
+		message_text = "Engine version '{}' is already installed with a different build workflow ({})"
 	elif message_id == Messages.INSTALL_AND_CONFIG_ALREADY_EXISTS:
-		message_text = "Version '{}' (with config '{}') is already installed. Please use '" + print_command(CliCommands.REFRESH) + "' to check if updates are available"
+		message_text = "Config '{}' for engine version '{}' is already installed. Please use '" + print_command(CliCommands.REFRESH) + "' to check if updates are available"
 	elif message_id == Messages.INSTALL_ENGINE_COMPLETED:
 		message_text = "Operation completed! Version '{}' is now usable"
 	elif message_id == Messages.INSTALL_GEM_COMPLETED:
@@ -361,6 +375,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Invalid answer. Please try again"
 	elif message_id == Messages.INVALID_BINARY:
 		message_text = "Unsupported binary: {}"
+	elif message_id == Messages.INVALID_BUILD_WORKFLOW:
+		message_text = "Unsupported build workflow: {}"
 	elif message_id == Messages.INVALID_CHANGES:
 		message_text = "Unable to parse changes"
 	elif message_id == Messages.INVALID_COMMAND:
@@ -401,14 +417,18 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Unable to activate hardware acceleration since current GPU drivers ({}) aren't supported. Falling back to software rendering..."
 	elif message_id == Messages.INVALID_IMAGE_IN_NO_CONTAINERS_MODE:
 		message_text = "Only image names are accepted when active mode is active. Received: {}"
-	elif message_id == Messages.INVALID_INSTALL_OPTIONS_REMOVE:
-		message_text = "Invalid options combination. At least one option between '" + print_option(LongOptions.REMOVE_BUILD) + "' and '" + print_option(LongOptions.REMOVE_INSTALL) + "' must be set to 'false', or the option '" + print_option(LongOptions.SAVE_IMAGES) + "' must be set to 'true'"
+	elif message_id == Messages.INVALID_INSTALL_OPTIONS_INCREMENTAL:
+		message_text = "Invalid options combination. Incremental mode can be used only when '" + print_option(LongOptions.WORKFLOW_SDK) + "' is set"
+	elif message_id == Messages.INVALID_INSTALL_OPTIONS_SAVE_IMAGES:
+		message_text = "Invalid options combination. Images can be generated only when '" + print_option(LongOptions.WORKFLOW_SDK) + "' is set"
 	elif message_id == Messages.INVALID_LFS:
 		message_text = "Invalid LFS URL: {}"
 	elif message_id == Messages.INVALID_LOCAL_BRANCH:
 		message_text = "Unable to parse the local branch"
 	elif message_id == Messages.INVALID_REMOTE_BRANCH:
 		message_text = "Unable to parse the remote branch tracked by local branch '{}'"
+	elif message_id == Messages.INVALID_DEPENDENCY_RESULT_VALUE:
+		message_text = "Invalid dependency result value: {}"
 	elif message_id == Messages.INVALID_OPERATING_SYSTEM:
 		message_text = "The current operating system is not supported: {}"
 	elif message_id == Messages.INVALID_OPTION:
@@ -482,7 +502,11 @@ def get_message_text(message_id, *args, **kwargs):
 	elif message_id == Messages.MISSING_GPU:
 		message_text = "Unable to activate hardware acceleration since no GPU was found. Falling back to software rendering..."
 	elif message_id == Messages.MISSING_INSTALL_ENGINE:
-		message_text = "The engine for this project is not installed, but it is available at: {}"
+		message_text = "The engine version required by this project is not installed, but it is available at: {}"
+	elif message_id == Messages.MISSING_INSTALL_ENGINE_CONFIG:
+		message_text = "Engine version '{}' required by this project is installed, but it doesn't contain config '{}'"
+	elif message_id == Messages.MISSING_INSTALL_ENGINE_PROJECT:
+		message_text = "Engine version '{}' is installed with an engine-centric workflow and doesn't include this project. Please use '" + print_command(CliCommands.SETTINGS) + "' to select another engine with a project-centric workflow"
 	elif message_id == Messages.MISSING_INSTALL_GEM:
 		message_text = "A gem for this project is not installed, but it is available at: {}"
 	elif message_id == Messages.MISSING_INSTALL_AND_CONFIG:

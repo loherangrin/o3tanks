@@ -67,13 +67,34 @@ def search_clang_binaries():
 	return [ None, None ]
 
 
-def generate_configurations(source_dir, build_dir):
+def generate_configurations(engine_workflow, is_engine):
+	if is_engine:
+		source_dir = O3DE_ENGINE_SOURCE_DIR
+		build_dir = O3DE_ENGINE_BUILD_DIR
+	else:
+		source_dir = O3DE_PROJECT_SOURCE_DIR
+		build_dir = O3DE_PROJECT_BUILD_DIR
+
 	common_options = [
 		"-B", str(build_dir),
 		"-S", str(source_dir),
 		"-DLY_UNITY_BUILD=ON",
 		"-DLY_3RDPARTY_PATH={}".format(O3DE_PACKAGES_DIR)
 	]
+
+	is_project_centric = (engine_workflow is not O3DE_BuildWorkflows.ENGINE_CENTRIC)
+	if is_project_centric:
+		common_options.append("-DLY_DISABLE_TEST_MODULES=TRUE")
+	
+		if not is_engine:			
+			common_options.append("-DCMAKE_MODULE_PATH={}/cmake".format(
+				O3DE_ENGINE_SOURCE_DIR if (engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SOURCE) else O3DE_ENGINE_INSTALL_DIR
+			))
+
+		elif engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SOURCE:
+			return True
+	else:
+		common_options.append("-DLY_PROJECTS=AutomatedTesting")
 
 	if OPERATING_SYSTEM.family is OSFamilies.LINUX:
 		clang_bin, clang_cpp_bin = search_clang_binaries()
@@ -148,14 +169,23 @@ def execute_cmake(arguments):
 
 # --- FUNCTIONS (ENGINE) ---
 
-def build_engine(engine_config, binaries):
+def build_engine(engine_workflow, engine_config):
+	if engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SOURCE:
+		return True
+	elif engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK:
+		targets = [ "install" ]
+	elif engine_workflow is O3DE_BuildWorkflows.ENGINE_CENTRIC:
+		targets = [ "Editor", "AutomatedTesting.GameLauncher" ]
+	else:
+		throw_error(Messages.INVALID_BUILD_WORKFLOW, engine_workflow)
+
 	if not O3DE_ENGINE_BUILD_DIR.exists() or is_directory_empty(O3DE_ENGINE_BUILD_DIR):
-		generate_engine_configurations()
+		generate_engine_configurations(engine_workflow)
 
 	options = [
 		"--build", str(O3DE_ENGINE_BUILD_DIR),
 		"--config", engine_config.value,
-		"--target", ', '.join(binaries) if (binaries is not None) else "install"
+		"--target", *targets
 	]
 
 	if OPERATING_SYSTEM.family is OSFamilies.WINDOWS:
@@ -166,13 +196,16 @@ def build_engine(engine_config, binaries):
 	if result.returncode != 0:
 		return result.returncode
 
-	if binaries is None:
+	if engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK:
 		required_paths = [ (pathlib.PurePath("python") / "runtime") ]
 
 		for path in required_paths:
 			from_path = O3DE_ENGINE_SOURCE_DIR / path
 			to_path = O3DE_ENGINE_INSTALL_DIR / path
 			
+			if to_path.exists() and not is_directory_empty(to_path):
+				continue
+
 			copy_all(from_path, to_path)
 
 	current_ap_config_file = O3DE_ENGINE_SOURCE_DIR / "Registry" / "AssetProcessorPlatformConfig.setreg"
@@ -221,27 +254,47 @@ def build_engine(engine_config, binaries):
 def clean_engine(engine_config, remove_build, remove_install):
 	clean_dirs = []
 
+	has_other_build_config = False
+	has_other_install_config = False
+
 	if engine_config is not None:
 		if remove_build:
-			build_config_dir = get_build_config_path(O3DE_ENGINE_BUILD_DIR, engine_config)
-			clean_dirs.append(build_config_dir)
+			for other_config in O3DE_Configs:
+				if other_config is engine_config:
+					continue
+
+				if has_build_config(O3DE_ENGINE_BUILD_DIR, other_config):
+					has_other_build_config = True
+					break
+
+			if has_other_build_config:
+				build_config_dir = get_build_config_path(O3DE_ENGINE_BUILD_DIR, engine_config)
+				clean_dirs.append(build_config_dir)
 
 		if remove_install:
-			install_config_dir = get_install_config_path(O3DE_ENGINE_INSTALL_DIR, engine_config)
-			clean_dirs.append(install_config_dir)
+			for other_config in O3DE_Configs:
+				if other_config is engine_config:
+					continue
 
-	else:
-		if remove_build:
-			clean_dirs.append(O3DE_ENGINE_BUILD_DIR)
+				if has_install_config(O3DE_ENGINE_INSTALL_DIR, other_config):
+					has_other_install_config = True
+					break
 
-		if remove_install:
-			clean_dirs.append(O3DE_ENGINE_INSTALL_DIR)
+			if has_other_install_config:
+				install_config_dir = get_install_config_path(O3DE_ENGINE_INSTALL_DIR, engine_config)
+				clean_dirs.append(install_config_dir)
+
+	if remove_build and not has_other_build_config:
+		clean_dirs.append(O3DE_ENGINE_BUILD_DIR)
+
+	if remove_install and not has_other_install_config:
+		clean_dirs.append(O3DE_ENGINE_INSTALL_DIR)
 
 	for clean_dir in clean_dirs:
 		clear_directory(clean_dir)
 
 
-def generate_engine_configurations():
+def generate_engine_configurations(engine_workflow):
 	get_python_file = get_script_filename("get_python")
 
 	try:
@@ -256,7 +309,7 @@ def generate_engine_configurations():
 	if result.returncode != 0:
 		throw_error(Messages.UNCOMPLETED_REGISTRATION, result.returncode, "\n{}\n{}".format(result.stdout, result.stderr))
 
-	generated = generate_configurations(O3DE_ENGINE_SOURCE_DIR, O3DE_ENGINE_BUILD_DIR)
+	generated = generate_configurations(engine_workflow, True)
 	if not generated:
 		throw_error(Messages.UNCOMPLETED_SOLUTION_GENERATION)
 
@@ -413,18 +466,38 @@ def change_gem_status(project_dir, gem_reference, active):
 
 # --- FUNCTIONS (PROJECT) ---
 
-def build_project(config, binary):
+def build_project(config, binary, regenerate_solution = False):
 	if is_directory_empty(O3DE_PROJECT_SOURCE_DIR):
 		throw_error(Messages.PROJECT_DIR_EMPTY)
 
-	if binary is None:
-		target_name = "Editor"
+	if regenerate_solution or (not O3DE_PROJECT_BUILD_DIR.is_dir() or is_directory_empty(O3DE_PROJECT_BUILD_DIR)):
+		engine_workflow = get_build_workflow(O3DE_ENGINE_SOURCE_DIR, O3DE_ENGINE_BUILD_DIR, O3DE_ENGINE_INSTALL_DIR)
+		if engine_workflow is O3DE_BuildWorkflows.ENGINE_CENTRIC:
+			throw_error(Messages.INCOMPATIBLE_BUILD_PROJECT_AND_WORKFLOW, engine_workflow.value)
 
+		old_gems = register_gems(O3DE_CLI_FILE, O3DE_PROJECT_SOURCE_DIR, O3DE_GEMS_DIR, O3DE_GEMS_EXTERNAL_DIR, show_unmanaged = True)
+
+		generated = generate_configurations(engine_workflow, False)
+		if not generated:
+			clear_registered_gems(O3DE_PROJECT_SOURCE_DIR, old_gems)
+			throw_error(Messages.UNCOMPLETED_SOLUTION_GENERATION)
 	else:
-		if binary == O3DE_ProjectBinaries.CLIENT:
+		old_gems = register_gems(O3DE_CLI_FILE, O3DE_PROJECT_SOURCE_DIR, O3DE_GEMS_DIR, O3DE_GEMS_EXTERNAL_DIR, show_unmanaged = True)
+
+	options = [
+		"--build", str(O3DE_PROJECT_BUILD_DIR),
+		"--config", config.value
+	]
+
+	if binary is None:
+		target_name = None
+	elif binary is O3DE_ProjectBinaries.TOOLS:
+		target_name = "Editor"
+	else:
+		if binary is O3DE_ProjectBinaries.CLIENT:
 			target_name = "GameLauncher"
 
-		elif binary == O3DE_ProjectBinaries.SERVER:
+		elif binary is O3DE_ProjectBinaries.SERVER:
 			target_name = "ServerLauncher"
 
 		else:
@@ -433,24 +506,14 @@ def build_project(config, binary):
 		project_manifest = get_project_manifest_file(O3DE_PROJECT_SOURCE_DIR)
 		project_name = read_json_property(project_manifest, JsonPropertyKey(None, None, "project_name"))
 		if project_name is None:
+			clear_registered_gems(O3DE_PROJECT_SOURCE_DIR, old_gems)
 			throw_error(Messages.INVALID_PROJECT_NAME)
 
 		target_name = "{}.{}".format(project_name, target_name)
 
-	register_project(O3DE_CLI_FILE, O3DE_PROJECT_SOURCE_DIR)
-	old_gems = register_gems(O3DE_CLI_FILE, O3DE_PROJECT_SOURCE_DIR, O3DE_GEMS_DIR, O3DE_GEMS_EXTERNAL_DIR, show_unmanaged = True)
-
-	if not O3DE_PROJECT_BUILD_DIR.is_dir() or is_directory_empty(O3DE_PROJECT_BUILD_DIR):
-		generated = generate_configurations(O3DE_PROJECT_SOURCE_DIR, O3DE_PROJECT_BUILD_DIR)
-		if not generated:
-			clear_registered_gems(O3DE_PROJECT_SOURCE_DIR, old_gems)
-			throw_error(Messages.UNCOMPLETED_SOLUTION_GENERATION)
-
-	options = [
-		"--build", str(O3DE_PROJECT_BUILD_DIR),
-		"--config", config.value,
-		"--target", target_name
-	]
+	if target_name is not None:
+		options.append("--target")
+		options.append(target_name)
 
 	if OPERATING_SYSTEM.family is OSFamilies.WINDOWS:
 		options.append("--")
@@ -496,19 +559,6 @@ def clean_project(config, force):
 	if force:
 		clear_directory(O3DE_PROJECT_BUILD_DIR)
 	else:
-		try:
-			subprocess.run([ O3DE_CLI_FILE, "register", "--this-engine" ], stdout = subprocess.DEVNULL, check = True)
-			subprocess.run([ O3DE_CLI_FILE, "register", "--project-path", str(O3DE_PROJECT_SOURCE_DIR) ], stdout = subprocess.DEVNULL, check = True)
-
-		except FileNotFoundError as error:
-			if error.filename == O3DE_CLI_FILE.name or (OPERATING_SYSTEM.family is OSFamilies.WINDOWS and error.filename is None):
-				throw_error(Messages.CORRUPTED_ENGINE_SOURCE, error.filename)
-			else:
-				raise error
-
-		except subprocess.CalledProcessError as error:
-			throw_error(Messages.UNCOMPLETED_REGISTRATION, error.returncode, "\n{}\n{}".format(error.stdout, error.stderr))
-
 		result = execute_cmake([
 			"--build", str(O3DE_PROJECT_BUILD_DIR),
 			"--config", config.value,
@@ -621,14 +671,20 @@ def write_project_setting(project_dir, setting_section, setting_index, setting_n
 				result_type, repository = get_repository_from_source(O3DE_ENGINE_SOURCE_DIR)
 				if result_type is not RepositoryResultType.OK:
 					throw_error(Messages.INVALID_REPOSITORY)
+
+				engine_workflow = get_build_workflow(O3DE_ENGINE_SOURCE_DIR, O3DE_ENGINE_BUILD_DIR, O3DE_ENGINE_INSTALL_DIR)
+				engine_workflow_value = engine_workflow.value if engine_workflow is not None else None
+
 			else:
 				repository = Repository(None, None, None)
+				engine_workflow_value = None
 
 			new_setting_values = {
 				EngineSettings.VERSION.value.name: setting_value,
 				EngineSettings.REPOSITORY.value.name: repository.url,
 				EngineSettings.BRANCH.value.name: repository.branch,
-				EngineSettings.REVISION.value.name: repository.revision
+				EngineSettings.REVISION.value.name: repository.revision,
+				EngineSettings.WORKFLOW.value.name: engine_workflow_value
 			}
 
 		elif setting_section == Settings.GEMS.value:
@@ -939,16 +995,17 @@ def main():
 		config = deserialize_arg(3, O3DE_Configs)
 		
 		if target == Targets.ENGINE:
-			binaries = deserialize_args(4) if len(sys.argv) > 4 else None
+			engine_workflow = deserialize_arg(4, O3DE_BuildWorkflows)
 
-			exit_code = build_engine(config, binaries)
+			exit_code = build_engine(engine_workflow, config)
 			if exit_code != 0:
 				exit(exit_code)
 
 		elif target == Targets.PROJECT:
 			binary = deserialize_arg(4, O3DE_ProjectBinaries) if len(sys.argv) > 4 else None
+			regenerate_solution = deserialize_arg(5, bool) if len(sys.argv) > 5 else False
 
-			exit_code = build_project(config, binary)
+			exit_code = build_project(config, binary, regenerate_solution)
 			if exit_code != 0:
 				exit(exit_code)
 
@@ -957,8 +1014,6 @@ def main():
 
 	elif command == BuilderCommands.CLEAN:
 		if target == Targets.ENGINE:
-			binaries = deserialize_args(4) if len(sys.argv) > 4 else None
-			
 			config = deserialize_arg(3, O3DE_Configs)
 			remove_build = deserialize_arg(4, bool)
 			remove_install = deserialize_arg(5, bool)
@@ -980,7 +1035,9 @@ def main():
 
 	elif command == BuilderCommands.INIT:
 		if target == Targets.ENGINE:
-			generate_engine_configurations()
+			engine_workflow = deserialize_arg(3, O3DE_BuildWorkflows)
+
+			generate_engine_configurations(engine_workflow)
 
 		elif target == Targets.GEM:
 			gem_name = deserialize_arg(3, str)
