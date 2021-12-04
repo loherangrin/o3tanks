@@ -115,6 +115,7 @@ class LongOptions(ObjectEnum):
 	FORCE = "force"
 	FORK = "fork"
 	HELP = CliCommands.HELP.value
+	INCREMENTAL = "incremental"
 	MINIMAL_PROJECT = "minimal"
 	PATH = "path"
 	PROJECT = "project"
@@ -129,6 +130,10 @@ class LongOptions(ObjectEnum):
 	TYPE = "type"
 	VERBOSE = "verbose"
 	VERSION = CliCommands.VERSION.value
+	WORKFLOW = "workflow"
+	WORKFLOW_ENGINE = "engine-centric"
+	WORKFLOW_PROJECT = "project-centric/engine-source"
+	WORKFLOW_SDK = "project-centric/engine-prebuilt"
 
 class ShortOptions(ObjectEnum):
 	CONFIG = 'c'
@@ -138,6 +143,7 @@ class ShortOptions(ObjectEnum):
 	PROJECT = 'p'
 	QUIET = 'q'
 	VERBOSE = 'v'
+	WORKFLOW = 'w'
 
 
 class Settings(ObjectEnum):
@@ -149,6 +155,7 @@ class EngineSettings(ObjectEnum):
 	REPOSITORY = JsonPropertyKey(Settings.ENGINE.value, None, "repository")
 	BRANCH = JsonPropertyKey(Settings.ENGINE.value, None, "branch")
 	REVISION = JsonPropertyKey(Settings.ENGINE.value, None, "revision")
+	WORKFLOW = JsonPropertyKey(Settings.ENGINE.value, None, "workflow")
 
 class GemSettings(ObjectEnum):
 	VERSION = JsonPropertyKey(Settings.GEMS.value, -1, "id")
