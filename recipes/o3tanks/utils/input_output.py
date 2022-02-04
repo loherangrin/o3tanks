@@ -500,7 +500,7 @@ def get_message_text(message_id, *args, **kwargs):
 	elif message_id == Messages.MISSING_GEM_IN_WORKSPACE:
 		message_text = "No gem was found in the manifest of repository at: {}"
 	elif message_id == Messages.MISSING_GPU:
-		message_text = "Unable to activate hardware acceleration since no GPU was found. Falling back to software rendering..."
+		message_text = "Hardware acceleration is disabled since no GPU was found (or it was forced to NONE)"
 	elif message_id == Messages.MISSING_INSTALL_ENGINE:
 		message_text = "The engine version required by this project is not installed, but it is available at: {}"
 	elif message_id == Messages.MISSING_INSTALL_ENGINE_CONFIG:

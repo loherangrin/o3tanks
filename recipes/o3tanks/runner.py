@@ -55,7 +55,7 @@ def run_asset_processor(engine_config, engine_workflow):
 	if not asset_processor_file.is_file():
 		throw_error(Messages.MISSING_BINARY, str(asset_processor_file), engine_config.value, "")
 
-	asset_processor = run_binary(engine_workflow, asset_processor_file, False)
+	asset_processor = run_binary(engine_workflow, asset_processor_file, rendering = False, wait = False)
 
 	time.sleep(1)
 	if asset_processor.poll() is not None:
@@ -70,7 +70,7 @@ def run_asset_processor(engine_config, engine_workflow):
 	return asset_processor
 
 
-def run_binary(engine_workflow, binary_file, wait = True):
+def run_binary(engine_workflow, binary_file, rendering = False, wait = True):
 	if engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK:
 		engine_dir = O3DE_ENGINE_INSTALL_DIR
 	else:
@@ -84,10 +84,12 @@ def run_binary(engine_workflow, binary_file, wait = True):
 		"--regset=/Amazon/AzCore/Bootstrap/project_path={}".format(O3DE_PROJECT_SOURCE_DIR)
 	]
 
+	if rendering and (GPU_DRIVER_NAME is None):
+		command.append("--rhi=null")
+
 	if wait:
 		result = subprocess.run(command)
 		return result
-
 	else:
 		handler = subprocess.Popen(command)
 		return handler
@@ -105,7 +107,7 @@ def open_project(config):
 
 	asset_processor = run_asset_processor(config, engine_workflow)
 
-	result = run_binary(engine_workflow, binary_file)
+	result = run_binary(engine_workflow, binary_file, rendering = True, wait = True)
 
 	if asset_processor is not None:
 		if result.returncode == 0:
@@ -139,7 +141,7 @@ def run_project(binary, config):
 
 	old_gems = register_gems(O3DE_CLI_FILE, O3DE_PROJECT_SOURCE_DIR, O3DE_GEMS_DIR, O3DE_GEMS_EXTERNAL_DIR, show_unmanaged = True)
 
-	result = run_binary(engine_workflow, binary_file, True)
+	result = run_binary(engine_workflow, binary_file, rendering = True, wait = True)
 	error_code = result.returncode
 	if has_gui and (error_code == -6):
 		throw_error(Messages.UNREACHABLE_X11_DISPLAY, DISPLAY_ID, REAL_USER.uid)

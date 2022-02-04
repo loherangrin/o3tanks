@@ -14,7 +14,7 @@
 
 
 from ..globals.o3de import O3DE_ENGINE_BUILD_DIR, O3DE_ENGINE_INSTALL_DIR, O3DE_ENGINE_SOURCE_DIR, O3DE_GEMS_DIR, O3DE_GEMS_EXTERNAL_DIR, O3DE_PACKAGES_DIR, O3DE_PROJECT_SOURCE_DIR
-from ..globals.o3tanks import DATA_DIR, DEVELOPMENT_MODE, DISPLAY_ID, GPU_DRIVER_NAME, OPERATING_SYSTEM, REAL_USER, RUN_CONTAINERS, ROOT_DIR, USER_NAME, USER_GROUP, GPUDrivers, Images, Volumes, get_version_number
+from ..globals.o3tanks import DATA_DIR, DEVELOPMENT_MODE, DISPLAY_ID, GPU_CARD_IDS, GPU_DRIVER_NAME, GPU_RENDER_OFFLOAD, OPERATING_SYSTEM, REAL_USER, RUN_CONTAINERS, ROOT_DIR, USER_NAME, USER_GROUP, GPUDrivers, Images, Volumes, get_version_number
 from .filesystem import clear_directory, is_directory_empty
 from .input_output import Level, Messages, get_verbose, print_msg, throw_error
 from .serialization import serialize_list
@@ -258,6 +258,9 @@ class ContainerClient(abc.ABC):
 
 			if OPERATING_SYSTEM.version is not None:
 				image += "_{}".format(OPERATING_SYSTEM.version)
+
+		if (GPU_DRIVER_NAME is not None) and (image_id in [ Images.RUNNER, Images.INSTALL_RUNNER ]):
+			image += "_{}".format(GPU_DRIVER_NAME.value)
 
 		return image
 
@@ -513,22 +516,31 @@ class DockerContainerClient(ContainerClient):
 			if GPU_DRIVER_NAME is None:
 				print_msg(Level.WARNING, Messages.MISSING_GPU)
 
-			elif GPU_DRIVER_NAME is GPUDrivers.NVIDIA_PROPRIETARY:
-				device_requests.append(docker.types.DeviceRequest(count = -1, capabilities = [ [ "gpu", "display", "graphics", "video" ] ]))
-
-				vulkan_configs = [
-					"/usr/share/vulkan/implicit_layer.d/nvidia_layers.json",
-					"/usr/share/vulkan/icd.d/nvidia_icd.json"
-				]
-
-				for config_file in vulkan_configs:
-					mounts.append(docker.types.Mount(type = "bind", source = config_file, target = config_file, read_only = True))
-
-			elif GPU_DRIVER_NAME in [ GPUDrivers.AMD_OPEN, GPUDrivers.AMD_PROPRIETARY, GPUDrivers.INTEL ]:
-				devices.append("/dev/dri:/dev/dri")
-
 			else:
-				print_msg(Level.WARNING, Messages.INVALID_GPU, GPU_DRIVER_NAME.value)
+				full_environment["O3TANKS_GPU_DRIVER"] = GPU_DRIVER_NAME.value
+
+				if GPU_DRIVER_NAME is GPUDrivers.NVIDIA_PROPRIETARY:
+					gpu_request = docker.types.DeviceRequest(capabilities = [ [ "gpu", "display", "graphics", "video" ] ])
+					if GPU_CARD_IDS is None:
+						gpu_request.count = -1
+					else:
+						gpu_request.device_ids = GPU_CARD_IDS
+
+					device_requests.append(gpu_request)
+
+					vulkan_configs = [
+						"/usr/share/vulkan/implicit_layer.d/nvidia_layers.json",
+						"/usr/share/vulkan/icd.d/nvidia_icd.json"
+					]
+
+					for config_file in vulkan_configs:
+						mounts.append(docker.types.Mount(type = "bind", source = config_file, target = config_file, read_only = True))
+
+				elif GPU_DRIVER_NAME in [ GPUDrivers.AMD_OPEN, GPUDrivers.AMD_PROPRIETARY, GPUDrivers.INTEL ]:
+					devices.append("/dev/dri:/dev/dri")
+
+				else:
+					print_msg(Level.WARNING, Messages.INVALID_GPU, GPU_DRIVER_NAME.value)
 
 		if len(environment) > 0:
 			full_environment.update(environment)
@@ -884,6 +896,10 @@ class NoneContainerClient(ContainerClient):
 
 			full_environment["O3TANKS_DISPLAY_ID"] = str(DISPLAY_ID)
 			full_environment["DISPLAY"] = ":{}".format(DISPLAY_ID)
+
+			if (GPU_DRIVER_NAME is GPUDrivers.NVIDIA_PROPRIETARY) and GPU_RENDER_OFFLOAD:
+				full_environment["__NV_PRIME_RENDER_OFFLOAD"] = str(1)
+				full_environment["__VK_LAYER_NV_optimus"] = "NVIDIA_only"
 
 		if len(environment) > 0:
 			full_environment.update(environment)

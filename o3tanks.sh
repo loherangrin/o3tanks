@@ -30,6 +30,10 @@ get_message_text()
 			echo 'Expecting a directory, but none was found at: %s'
 			;;
 
+		("${MESSAGES_INVALID_GPU_ID}")
+			echo 'At least one of the following GPU cards cannot be found: %s'
+			;;
+
 		("${MESSAGES_INVALID_OPERATING_SYSTEM}")
 			echo 'The current operating system is not supported: %s'
 			;;
@@ -46,8 +50,24 @@ get_message_text()
 			echo "Unable to find 'docker'"
 			;;
 
+		("${MESSAGES_MISSING_ANY_GPU}")
+			echo "A GPU card is expected, but none was found. If you want to disable hardware acceleration, please set O3TANKS_GPU to '${GPU_TYPES_NONE}'"
+			;;
+
+		("${MESSAGES_MISSING_DEDICATED_GPU}")
+			echo "Dedicated GPU was requested, but none was found.\nPlease change O3TANKS_GPU to '${GPU_TYPES_INTEGRATED}' if your system has only an integrated GPU card, or set it to '${GPU_TYPES_NONE}' if there is not"
+			;;
+
+		("${MESSAGES_MISSING_INTEGRATED_GPU}")
+			echo "Integrated GPU was requested, but none was found.\nPlease clear O3TANKS_GPU if your system has a discrete GPU card, or set it to '${GPU_TYPES_NONE}' if there is not"
+			;;
+
 		("${MESSAGES_MISSING_NVIDIA_DOCKER}")
 			echo "Unable to find 'nvidia-docker'. At least 'nvidia-container-toolkit' package is required to enable GPU acceleration.\n\nPlease refer to NVIDIA documentation:\nhttps://docs.nvidia.com/datacenter/cloud-native/container-toolkit/arch-overview.html"
+			;;
+
+		("${MESSAGES_MISSING_NVIDIA_DRIVER}")
+			echo "A Nvidia GPU card with installed proprietary driver is required, but none was found"
 			;;
 
 		("${MESSAGES_MISSING_PYTHON}")
@@ -56,6 +76,10 @@ get_message_text()
 
 		("${MESSAGES_UNSUPPORTED_CONTAINTERS_MODE}")
 			echo "Containers are not supported on %s. Please unset any value for 'O3TANKS_NO_CONTAINERS' in your system variables"
+			;;
+
+		("${MESSAGES_UNSUPPORTED_SELECT_GPU_ID}")
+			echo "Individual GPU card can be selected only when container mode is enabled"
 			;;
 
 		("${MESSAGES_VOLUMES_DIR_NOT_FOUND}")
@@ -421,9 +445,53 @@ extract_substring()
 get_gpu_driver()
 {
 	local gpu_driver
-	gpu_driver=$(lspci -vmmnk | awk '/^Class:[[:space:]]+0300$/{is_vga=1;next}; is_vga && /^Driver:/{print $2;exit}')
+
+	if [ "${HOST_OPERATING_SYSTEM}" = "${OS_FAMILIES_MAC}" ]; then
+		gpu_driver="${GPU_DRIVERS_INTEL}"
+
+	else
+		gpu_driver=$(lspci -vmmnk | awk \
+			'
+			/^Class:[[:space:]]+03[0-9][0-9]$/ { is_vga=1; next };
+			{
+			if(is_vga && $1 == "Driver:")
+			{
+				is_vga=0;
+				if($2 == "i915")
+				{
+					if(has_discrete)
+					{
+						next
+					}
+				}
+				else
+				{
+					has_discrete=1
+				};
+				gpu_driver=$2
+			}
+			};
+			END { print gpu_driver }
+			'
+		)
+	fi
 
 	echo "${gpu_driver}"
+}
+
+get_group_id()
+{
+	local group_name="${1}"
+
+	group_id=$(awk \
+		-F ':' \
+		-v group_name="${group_name}" \
+		'($1 == group_name){ print $3; exit }' \
+		\
+		"/etc/group"
+	)
+
+	echo "${group_id}"
 }
 
 get_os_family()
@@ -448,6 +516,52 @@ get_os_family()
 
 	echo "${os_family}"
 	return 0
+}
+
+gpu_driver_exists()
+{
+	local gpu_driver="${1}"
+
+	lspci -vmmnk | awk \
+		-v gpu_driver="${gpu_driver}" \
+		'
+		/^Class:[[:space:]]+03[0-9][0-9]$/{is_vga=1; next};
+		{
+		if(is_vga && $1 == "Driver:")
+		{
+			is_vga=0;
+			if($2 == gpu_driver)
+			{
+				found=1;
+				exit
+			}
+		}
+		};
+		END { exit (found) ? 0 : 1 }
+		'
+}
+
+gpu_ids_exist()
+{
+	local gpu_ids="${1}"
+
+	nvidia-smi --list-gpus | awk \
+		-v gpu_value="${gpu_ids}" \
+		'
+		BEGIN { split(gpu_value, gpu_ids, ",") };
+		{
+		for (i in gpu_ids)
+		{
+			id_pattern = "\\(UUID: " gpu_ids[i] "\\)$";
+			if($0 ~ id_pattern)
+			{
+				delete gpu_ids[i];
+				next
+			}
+		}
+		};
+		END { exit (length(gpu_ids) == 0) ? 0 : 1 }
+		'
 }
 
 init_globals()
@@ -509,19 +623,36 @@ init_globals()
 
 	readonly SUBCOMMANDS_GEM='gem'
 
+	readonly GPU_DRIVERS_AMD_OPEN='amdgpu'
+	readonly GPU_DRIVERS_AMD_PROPRIETARY='amdgpu-pro'
+	readonly GPU_DRIVERS_INTEL='i915'
+	readonly GPU_DRIVERS_NVIDIA_OPEN='nouveau'
+	readonly GPU_DRIVERS_NVIDIA_PROPRIETARY='nvidia'
+
+	readonly GPU_TYPES_NONE='none'
+	readonly GPU_TYPES_INTEGRATED='integrated'
+	readonly GPU_TYPES_DEDICATED='dedicated'
+	readonly GPU_TYPES_DEDICATED_ALIAS='discrete'
+
 	readonly IMAGE_PREFIX='o3tanks'
 	readonly IMAGES_CLI='cli'
 
 	readonly MESSAGES_BIN_DIR_NOT_FOUND=1
 	readonly MESSAGES_INVALID_DIRECTORY=2
-	readonly MESSAGES_INVALID_OPERATING_SYSTEM=3
-	readonly MESSAGES_INVALID_SYMLINK=4
-	readonly MESSAGES_INVALID_USER_NAMESPACE=5
-	readonly MESSAGES_MISSING_DOCKER=6
-	readonly MESSAGES_MISSING_NVIDIA_DOCKER=7
-	readonly MESSAGES_MISSING_PYTHON=8
-	readonly MESSAGES_UNSUPPORTED_CONTAINTERS_MODE=9
-	readonly MESSAGES_VOLUMES_DIR_NOT_FOUND=10
+	readonly MESSAGES_INVALID_GPU_ID=3
+	readonly MESSAGES_INVALID_OPERATING_SYSTEM=4
+	readonly MESSAGES_INVALID_SYMLINK=5
+	readonly MESSAGES_INVALID_USER_NAMESPACE=6
+	readonly MESSAGES_MISSING_DOCKER=7
+	readonly MESSAGES_MISSING_ANY_GPU=8
+	readonly MESSAGES_MISSING_DEDICATED_GPU=9
+	readonly MESSAGES_MISSING_INTEGRATED_GPU=10
+	readonly MESSAGES_MISSING_NVIDIA_DOCKER=11
+	readonly MESSAGES_MISSING_NVIDIA_DRIVER=12
+	readonly MESSAGES_MISSING_PYTHON=13
+	readonly MESSAGES_UNSUPPORTED_CONTAINTERS_MODE=14
+	readonly MESSAGES_UNSUPPORTED_SELECT_GPU_ID=15
+	readonly MESSAGES_VOLUMES_DIR_NOT_FOUND=16
 
 	readonly OS_FAMILIES_LINUX=1
 	readonly OS_FAMILIES_MAC=2
@@ -647,6 +778,64 @@ init_globals()
 
 run_cli()
 {
+	local gpu_driver
+	local gpu_ids=''
+	case ${1:-} in
+		("${COMMANDS_OPEN}"|"${COMMANDS_RUN}")
+			local gpu_value="${O3TANKS_GPU:-}"
+
+			case ${gpu_value} in
+				('')
+					gpu_driver=$(get_gpu_driver)
+
+					if [ -z "${gpu_driver}" ]; then
+						throw_error "${MESSAGES_ANY_GPU}"
+					fi
+					;;
+
+				("${GPU_TYPES_DEDICATED}"|"${GPU_TYPES_DEDICATED_ALIAS}")
+					gpu_driver=$(get_gpu_driver)
+
+					if [ -z "${gpu_driver}" ] || [ "${gpu_driver}" = "${GPU_DRIVERS_INTEL}" ]; then
+						throw_error "${MESSAGES_MISSING_DEDICATED_GPU}"
+					fi
+					;;
+
+				("${GPU_TYPES_INTEGRATED}")
+					gpu_driver="${GPU_DRIVERS_INTEL}"
+
+					if ! gpu_driver_exists "${gpu_driver}"; then
+						throw_error "${MESSAGES_MISSING_INTEGRATED_GPU}"
+					fi
+					;;
+
+				("${GPU_TYPES_NONE}")
+					gpu_driver=''
+					;;
+
+				(*)
+					if [ "${RUN_CONTAINERS_ALL}" = 'false' ]; then
+						throw_error "${MESSAGES_UNSUPPORTED_SELECT_GPU_ID}"
+					fi
+
+					gpu_driver="${GPU_DRIVERS_NVIDIA_PROPRIETARY}"
+					if ! gpu_driver_exists "${gpu_driver}"; then
+						throw_error "${MESSAGES_MISSING_NVIDIA_DRIVER}"
+					fi
+
+					gpu_ids="${gpu_value}"
+					if ! gpu_ids_exist "${gpu_ids}"; then
+						throw_error "${MESSAGES_INVALID_GPU_ID}" "${gpu_ids}"
+					fi
+					;;
+			esac
+			;;
+
+		(*)
+			gpu_driver=''
+			;;
+	esac
+	
 	if [ "${RUN_CONTAINERS_CLI}" = 'false' ]; then
 		check_python
 		
@@ -659,6 +848,9 @@ run_cli()
 		fi
 		if [ -n "${DATA_DIR}" ]; then
 			export O3TANKS_DATA_DIR="${DATA_DIR}"
+		fi
+		if [ "${gpu_driver}" = "${GPU_DRIVERS_NVIDIA_PROPRIETARY}" ] && gpu_driver_exists "${GPU_DRIVERS_INTEL}" ; then
+			export O3TANKS_GPU_RENDER_OFFLOAD='true'
 		fi
 
 		"${PYTHON_BIN_FILE}" -m "o3tanks.cli" "$0" "${BIN_FILE}" "-" "$@"
@@ -821,15 +1013,29 @@ run_cli()
 	local gpu_env
 	case ${1:-} in
 		("${COMMANDS_OPEN}"|"${COMMANDS_RUN}")
-			local gpu_driver
-			gpu_driver=$(get_gpu_driver)
-
 			if [ -n "${gpu_driver}" ]; then
-				if [ "${gpu_driver}" = "nvidia" ]; then
-					check_nvidia_docker
-				fi
+				gpu_env="--env O3TANKS_GPU_DRIVER=${gpu_driver}"
 
-				gpu_env="--env O3TANKS_GPU=${gpu_driver}"
+				case ${gpu_driver} in
+					("${GPU_DRIVERS_NVIDIA_PROPRIETARY}")
+						check_nvidia_docker
+						;;
+
+					(*)
+						local video_gid
+						video_gid=$(get_group_id 'video')
+
+						local render_gid
+						render_gid=$(get_group_id 'render')
+
+						gpu_env="${gpu_env} --env O3TANKS_GPU_VIDEO_GROUP=${video_gid}"
+						gpu_env="${gpu_env} --env O3TANKS_GPU_RENDER_GROUP=${render_gid}"
+						;;
+				esac
+
+				if [ -n "${gpu_ids}" ]; then
+					gpu_env="${gpu_env} --env O3TANKS_GPU_IDS=${gpu_ids}"
+				fi
 			else
 				gpu_env=''
 			fi
