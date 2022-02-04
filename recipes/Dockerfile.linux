@@ -180,13 +180,40 @@ RUN "${O3TANKS_PACKAGE_MANAGER}" install system runner
 ARG USER_NAME
 ARG INSTALL_GPU_AMD=false
 ARG INSTALL_GPU_INTEL=false
-RUN if [ "${INSTALL_GPU_AMD}" = "true" ]; then \
+ARG RENDER_GROUP_ID
+ARG RENDER_GROUP_NAME
+ARG VIDEO_GROUP_ID
+ARG VIDEO_GROUP_NAME
+RUN GROUPS_FILE="/etc/group" \
+ && if [ ${RENDER_GROUP_ID} -gt 0 ]; then \
+		if ! grep --quiet "${RENDER_GROUP_NAME}:x:" "${GROUPS_FILE}"; then \
+			groupadd \
+				--gid "${RENDER_GROUP_ID}" \
+				"${RENDER_GROUP_NAME}" \
+	  ; elif ! grep --quiet "${RENDER_GROUP_NAME}:x:${RENDER_GROUP_ID}:" "${GROUPS_FILE}"; then \
+			groupadd \
+				--gid "${RENDER_GROUP_ID}" \
+				"${RENDER_GROUP_NAME}-host" \
+	  ; fi \
+	  && usermod --append --groups "${RENDER_GROUP_ID}","${RENDER_GROUP_NAME}" "${USER_NAME}" \
+  ; fi \
+ && if [ ${VIDEO_GROUP_ID} -gt 0 ]; then \
+		if ! grep --quiet "${VIDEO_GROUP_NAME}:x:" "${GROUPS_FILE}"; then \
+			groupadd \
+				--gid "${VIDEO_GROUP_ID}" \
+				"${VIDEO_GROUP_NAME}" \
+	  ; elif ! grep --quiet "${VIDEO_GROUP_NAME}:x:${VIDEO_GROUP_ID}:" "${GROUPS_FILE}"; then \
+			groupadd \
+				--gid "${VIDEO_GROUP_ID}" \
+				"${VIDEO_GROUP_NAME}-host" \
+	  ; fi \
+	  && usermod --append --groups "${VIDEO_GROUP_ID},${VIDEO_GROUP_NAME}" "${USER_NAME}" \
+  ; fi \
+ && if [ "${INSTALL_GPU_AMD}" = "true" ]; then \
  		"${O3TANKS_PACKAGE_MANAGER}" install system gpu_amd \
-	 && usermod --append --groups render,video ${USER_NAME} \
   ; fi \
  && if [ "${INSTALL_GPU_INTEL}" = "true" ]; then \
  		"${O3TANKS_PACKAGE_MANAGER}" install system gpu_intel \
-	 && usermod --append --groups render,video ${USER_NAME} \
   ; fi \
  && rm --recursive "${O3TANKS_PACKAGES_DIR}"
 ENV O3TANKS_PACKAGES_DIR=''

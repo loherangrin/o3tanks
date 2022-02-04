@@ -69,10 +69,10 @@ class RunnerCommands(ObjectEnum):
 
 
 class GPUDrivers(ObjectEnum):
-	AMD_OPEN = "amdgpu",
+	AMD_OPEN = "amdgpu"
 	AMD_PROPRIETARY = "amdgpu-pro"
-	INTEL = "i915",
-	NVIDIA_OPEN = "nouveau",
+	INTEL = "i915"
+	NVIDIA_OPEN = "nouveau"
 	NVIDIA_PROPRIETARY = "nvidia"
 
 
@@ -190,6 +190,8 @@ def init_from_env(env_name, env_type, default_value):
 
 	if env_type is bool:
 		value = (env_value.lower() in [ "1", "on", "true"])
+	elif env_type is list:
+		value = env_value.split(',')
 	else:
 		value = env_type(env_value)
 
@@ -274,7 +276,11 @@ DEVELOPMENT_MODE = init_from_env("O3TANKS_DEV_MODE", bool, False)
 RUN_CONTAINERS = not init_from_env("O3TANKS_NO_CONTAINERS", bool, False)
 
 DISPLAY_ID = init_from_env("O3TANKS_DISPLAY_ID", int, -1)
-GPU_DRIVER_NAME = init_from_env("O3TANKS_GPU", GPUDrivers, None)
+GPU_DRIVER_NAME = init_from_env("O3TANKS_GPU_DRIVER", GPUDrivers, None)
+GPU_RENDER_OFFLOAD = init_from_env("O3TANKS_GPU_RENDER_OFFLOAD", bool, False)
+GPU_RENDER_GROUP_ID = init_from_env("O3TANKS_GPU_RENDER_GROUP", int, -1)
+GPU_VIDEO_GROUP_ID = init_from_env("O3TANKS_GPU_VIDEO_GROUP", int, -1)
+GPU_CARD_IDS = init_from_env("O3TANKS_GPU_IDS", list, None)
 
 OPERATING_SYSTEM = get_os()
 

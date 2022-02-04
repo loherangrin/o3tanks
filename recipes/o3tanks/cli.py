@@ -649,7 +649,11 @@ def check_image(image_id, build_stage):
 		if image_id is Images.RUNNER:
 			build_arguments = {
 				"INSTALL_GPU_INTEL": "true" if GPU_DRIVER_NAME is GPUDrivers.INTEL else "false",
-				"INSTALL_GPU_AMD": "true" if GPU_DRIVER_NAME in [ GPUDrivers.AMD_OPEN, GPUDrivers.AMD_PROPRIETARY ] else "false"
+				"INSTALL_GPU_AMD": "true" if GPU_DRIVER_NAME in [ GPUDrivers.AMD_OPEN, GPUDrivers.AMD_PROPRIETARY ] else "false",
+				"RENDER_GROUP_ID": str(GPU_RENDER_GROUP_ID) if GPU_RENDER_GROUP_ID > 0 else "-1",
+				"RENDER_GROUP_NAME": "render",
+				"VIDEO_GROUP_ID": str(GPU_VIDEO_GROUP_ID) if GPU_VIDEO_GROUP_ID > 0 else "-1",
+				"VIDEO_GROUP_NAME": "video"
 			}
 		else:
 			build_arguments = {}
