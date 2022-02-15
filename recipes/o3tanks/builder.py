@@ -555,17 +555,25 @@ def check_project_settings(project_dir):
 		gitignore_file.write_text(private_name + '/')
 
 
-def clean_project(config, force):
-	if force:
-		clear_directory(O3DE_PROJECT_BUILD_DIR)
-	else:
-		result = execute_cmake([
-			"--build", str(O3DE_PROJECT_BUILD_DIR),
-			"--config", config.value,
-			"--target", "clean"
-		])
+def clean_project(config, remove_build, remove_cache, force):
+	exit_code = 0
 
-		return result.returncode
+	if remove_build:
+		if force:
+			clear_directory(O3DE_PROJECT_BUILD_DIR)
+		else:
+			result = execute_cmake([
+				"--build", str(O3DE_PROJECT_BUILD_DIR),
+				"--config", config.value,
+				"--target", "clean"
+			])
+			exit_code = result.returncode
+
+	if remove_cache:
+		clear_directory(O3DE_PROJECT_CACHE_DIR, not force)
+		clear_directory(O3DE_PROJECT_USER_DIR, not force)
+
+	return exit_code
 
 
 def generate_project(project_name, base_template, engine_version, project_dir = O3DE_PROJECT_SOURCE_DIR):
@@ -1024,9 +1032,11 @@ def main():
 
 		elif target == Targets.PROJECT:
 			config = deserialize_arg(3, O3DE_Configs)
-			force= deserialize_arg(4, bool)
+			remove_build = deserialize_arg(4, bool)
+			remove_cache = deserialize_arg(5, bool)
+			force = deserialize_arg(6, bool)
 			
-			exit_code = clean_project(config, force)
+			exit_code = clean_project(config, remove_build, remove_cache, force)
 			if exit_code != 0:
 				exit(exit_code)
 			

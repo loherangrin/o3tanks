@@ -1740,10 +1740,10 @@ def build_project(project_dir, binary, config):
 	run_builder(engine_version, config, project_dir, external_gem_dirs, BuilderCommands.BUILD, Targets.PROJECT, config, binary, was_config_missing)
 
 
-def clean_project(project_dir, config, force = False):
+def clean_project(project_dir, config, remove_build, remove_cache, force = False):
 	engine_version, not_used, not_used, external_gem_dirs = check_project_dependencies(project_dir, config if not force else None)
 
-	run_builder(engine_version, config, project_dir, external_gem_dirs, BuilderCommands.CLEAN, Targets.PROJECT, config, force)
+	run_builder(engine_version, config, project_dir, external_gem_dirs, BuilderCommands.CLEAN, Targets.PROJECT, config, remove_build, remove_cache, force)
 
 
 def manage_project_settings(project_dir, setting_key_section , setting_key_index, setting_key_name, setting_value, clear):
@@ -2238,7 +2238,7 @@ def handle_build_command(project_path, binary_name, config_name):
 		close_container_client()
 
 
-def handle_clean_command(project_path, config_name, force):
+def handle_clean_command(project_path, config_name, remove_build, remove_cache, force):
 	config = O3DE_Configs.from_value(config_name)
 	if config is None:
 		throw_error(Messages.INVALID_CONFIG, config_name)
@@ -2249,11 +2249,15 @@ def handle_clean_command(project_path, config_name, force):
 	elif not is_project(project_dir):
 		throw_error(Messages.PROJECT_NOT_FOUND, (project_path if project_path is not None else project_dir))
 
+	if not remove_build and not remove_cache:
+		remove_build = True
+		remove_cache = False
+
 	try:
 		check_container_client()
 		check_builder()
 
-		clean_project(project_dir, config, force)
+		clean_project(project_dir, config, remove_build, remove_cache, force)
 
 	finally:
 		close_container_client()
@@ -2472,6 +2476,8 @@ def main():
 	DESCRIPTIONS_CLEAN_CONFIG = DESCRIPTIONS_COMMON_CONFIG
 	DESCRIPTIONS_CLEAN_FORCE = "Remove files even if the project is corrupted"
 	DESCRIPTIONS_CLEAN_PROJECT = DESCRIPTIONS_COMMON_PROJECT
+	DESCRIPTIONS_CLEAN_BUILD = "Remove built files (default)"
+	DESCRIPTIONS_CLEAN_CACHE = "Remove cached files"
 
 	DESCRIPTIONS_INIT = "Create a new empty workspace"
 	DESCRIPTIONS_INIT_ALIAS = "Assign a project name, instead of the directory name"
@@ -2657,7 +2663,9 @@ def main():
 	clean_parser = subparsers.add_parser(CliCommands.CLEAN.value, parents = [ global_parser ], help = DESCRIPTIONS_CLEAN)
 	clean_parser.set_defaults(handler = handle_clean_command)
 	clean_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PROJECT), dest = "project_path", metavar = "<path>", help = DESCRIPTIONS_CLEAN_PROJECT)
-	
+	clean_parser.add_argument(print_option(LongOptions.BUILD), dest = "remove_build", action = "store_true", help = DESCRIPTIONS_CLEAN_BUILD)
+	clean_parser.add_argument(print_option(LongOptions.CACHE), dest = "remove_cache", action = "store_true", help = DESCRIPTIONS_CLEAN_CACHE)
+
 	clean_group = clean_parser.add_mutually_exclusive_group()
 	clean_group.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "config_name", default = O3DE_DEFAULT_CONFIG.value, metavar = "<config>", help = DESCRIPTIONS_CLEAN_CONFIG)
 	clean_group.add_argument(print_option(ShortOptions.FORCE), print_option(LongOptions.FORCE), action = "store_true", help = DESCRIPTIONS_CLEAN_FORCE)
