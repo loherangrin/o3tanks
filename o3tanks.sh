@@ -614,6 +614,7 @@ init_globals()
 	readonly COMMANDS_RUN='run'
 	readonly COMMANDS_SETTINGS='settings'
 
+	readonly SUBCOMMANDS_ASSETS='assets'
 	readonly SUBCOMMANDS_GEM='gem'
 
 	readonly DISPLAY_TYPES_NONE='none'
@@ -781,85 +782,100 @@ init_globals()
 
 run_cli()
 {
-	local display_id
-	local gpu_driver
-	local gpu_ids=''
+	local has_gui
 	case ${1:-} in
-		("${COMMANDS_OPEN}"|"${COMMANDS_RUN}")
-			display_id="${O3TANKS_DISPLAY:-}"
-			if [ -z "${display_id}" ]; then
-				display_id="${DISPLAY:-}"
+		("${COMMANDS_BUILD}")
+			if [ "${2:-}" = "${SUBCOMMANDS_ASSETS}" ]; then
+				has_gui='true'
+			else
+				has_gui='false'
 			fi
-			case ${display_id} in
-				('')
-					if [ "${HOST_OPERATING_SYSTEM}" = "${OS_FAMILIES_LINUX}" ]; then
-						throw_error "${MESSAGES_MISSING_DISPLAY}"
-					fi
-					;;
+			;;
 
-				(${DISPLAY_TYPES_NONE})
-					display_id=''
-					;;
-
-				(:*)
-					display_id="${display_id#:}"
-					;;
-			esac
-
-			local gpu_value="${O3TANKS_GPU:-}"
-
-			case ${gpu_value} in
-				('')
-					gpu_driver=$(get_gpu_driver)
-
-					if [ -z "${gpu_driver}" ]; then
-						throw_error "${MESSAGES_MISSING_ANY_GPU}"
-					fi
-					;;
-
-				("${GPU_TYPES_DEDICATED}"|"${GPU_TYPES_DEDICATED_ALIAS}")
-					gpu_driver=$(get_gpu_driver)
-
-					if [ -z "${gpu_driver}" ] || [ "${gpu_driver}" = "${GPU_DRIVERS_INTEL}" ]; then
-						throw_error "${MESSAGES_MISSING_DEDICATED_GPU}"
-					fi
-					;;
-
-				("${GPU_TYPES_INTEGRATED}")
-					gpu_driver="${GPU_DRIVERS_INTEL}"
-
-					if ! gpu_driver_exists "${gpu_driver}"; then
-						throw_error "${MESSAGES_MISSING_INTEGRATED_GPU}"
-					fi
-					;;
-
-				("${GPU_TYPES_NONE}")
-					gpu_driver=''
-					;;
-
-				(*)
-					if [ "${RUN_CONTAINERS_ALL}" = 'false' ]; then
-						throw_error "${MESSAGES_UNSUPPORTED_SELECT_GPU_ID}"
-					fi
-
-					gpu_driver="${GPU_DRIVERS_NVIDIA_PROPRIETARY}"
-					if ! gpu_driver_exists "${gpu_driver}"; then
-						throw_error "${MESSAGES_MISSING_NVIDIA_DRIVER}"
-					fi
-
-					gpu_ids="${gpu_value}"
-					if ! gpu_ids_exist "${gpu_ids}"; then
-						throw_error "${MESSAGES_INVALID_GPU_ID}" "${gpu_ids}"
-					fi
-					;;
-			esac
+		("${COMMANDS_OPEN}"|"${COMMANDS_RUN}")
+			has_gui='true'
 			;;
 
 		(*)
-			display_id=''
-			gpu_driver=''
+			has_gui='false'
 			;;
 	esac
+
+	local display_id
+	local gpu_driver
+	local gpu_ids=''
+	if [ "${has_gui}" = 'true' ]; then
+		display_id="${O3TANKS_DISPLAY:-}"
+		if [ -z "${display_id}" ]; then
+			display_id="${DISPLAY:-}"
+		fi
+		case ${display_id} in
+			('')
+				if [ "${HOST_OPERATING_SYSTEM}" = "${OS_FAMILIES_LINUX}" ]; then
+					throw_error "${MESSAGES_MISSING_DISPLAY}"
+				fi
+				;;
+
+			(${DISPLAY_TYPES_NONE})
+				display_id=''
+				;;
+
+			(:*)
+				display_id="${display_id#:}"
+				;;
+		esac
+
+		local gpu_value="${O3TANKS_GPU:-}"
+
+		case ${gpu_value} in
+			('')
+				gpu_driver=$(get_gpu_driver)
+
+				if [ -z "${gpu_driver}" ]; then
+					throw_error "${MESSAGES_MISSING_ANY_GPU}"
+				fi
+				;;
+
+			("${GPU_TYPES_DEDICATED}"|"${GPU_TYPES_DEDICATED_ALIAS}")
+				gpu_driver=$(get_gpu_driver)
+
+				if [ -z "${gpu_driver}" ] || [ "${gpu_driver}" = "${GPU_DRIVERS_INTEL}" ]; then
+					throw_error "${MESSAGES_MISSING_DEDICATED_GPU}"
+				fi
+				;;
+
+			("${GPU_TYPES_INTEGRATED}")
+				gpu_driver="${GPU_DRIVERS_INTEL}"
+
+				if ! gpu_driver_exists "${gpu_driver}"; then
+					throw_error "${MESSAGES_MISSING_INTEGRATED_GPU}"
+				fi
+				;;
+
+			("${GPU_TYPES_NONE}")
+				gpu_driver=''
+				;;
+
+			(*)
+				if [ "${RUN_CONTAINERS_ALL}" = 'false' ]; then
+					throw_error "${MESSAGES_UNSUPPORTED_SELECT_GPU_ID}"
+				fi
+
+				gpu_driver="${GPU_DRIVERS_NVIDIA_PROPRIETARY}"
+				if ! gpu_driver_exists "${gpu_driver}"; then
+					throw_error "${MESSAGES_MISSING_NVIDIA_DRIVER}"
+				fi
+
+				gpu_ids="${gpu_value}"
+				if ! gpu_ids_exist "${gpu_ids}"; then
+					throw_error "${MESSAGES_INVALID_GPU_ID}" "${gpu_ids}"
+				fi
+				;;
+		esac
+	else
+		display_id=''
+		gpu_driver=''
+	fi
 	
 	if [ "${RUN_CONTAINERS_CLI}" = 'false' ]; then
 		check_python
@@ -912,7 +928,7 @@ run_cli()
 			local command
 			local subcommand
 			case ${1:-} in
-				("${COMMANDS_ADD}"|"${COMMANDS_INIT}"|"${COMMANDS_REMOVE}"|"${COMMANDS_RUN}")
+				("${COMMANDS_ADD}"|"${COMMANDS_BUILD}"|"${COMMANDS_INIT}"|"${COMMANDS_REMOVE}"|"${COMMANDS_RUN}")
 					command="${1}"
 					subcommand="${2:-}"
 					if [ -n "${subcommand}" ]; then
@@ -1041,40 +1057,36 @@ run_cli()
 	fi
 
 	local gpu_env
-	case ${1:-} in
-		("${COMMANDS_OPEN}"|"${COMMANDS_RUN}")
-			if [ -n "${gpu_driver}" ]; then
-				gpu_env="--env O3TANKS_GPU_DRIVER=${gpu_driver}"
+	if [ "${has_gui}" = 'true' ]; then
+		if [ -n "${gpu_driver}" ]; then
+			gpu_env="--env O3TANKS_GPU_DRIVER=${gpu_driver}"
 
-				case ${gpu_driver} in
-					("${GPU_DRIVERS_NVIDIA_PROPRIETARY}")
-						check_nvidia_docker
-						;;
+			case ${gpu_driver} in
+				("${GPU_DRIVERS_NVIDIA_PROPRIETARY}")
+					check_nvidia_docker
+					;;
 
-					(*)
-						local video_gid
-						video_gid=$(get_group_id 'video')
+				(*)
+					local video_gid
+					video_gid=$(get_group_id 'video')
 
-						local render_gid
-						render_gid=$(get_group_id 'render')
+					local render_gid
+					render_gid=$(get_group_id 'render')
 
-						gpu_env="${gpu_env} --env O3TANKS_GPU_VIDEO_GROUP=${video_gid}"
-						gpu_env="${gpu_env} --env O3TANKS_GPU_RENDER_GROUP=${render_gid}"
-						;;
-				esac
+					gpu_env="${gpu_env} --env O3TANKS_GPU_VIDEO_GROUP=${video_gid}"
+					gpu_env="${gpu_env} --env O3TANKS_GPU_RENDER_GROUP=${render_gid}"
+					;;
+			esac
 
-				if [ -n "${gpu_ids}" ]; then
-					gpu_env="${gpu_env} --env O3TANKS_GPU_IDS=${gpu_ids}"
-				fi
-			else
-				gpu_env=''
+			if [ -n "${gpu_ids}" ]; then
+				gpu_env="${gpu_env} --env O3TANKS_GPU_IDS=${gpu_ids}"
 			fi
-			;;
-
-		(*)
+		else
 			gpu_env=''
-			;;
-	esac
+		fi
+	else
+		gpu_env=''
+	fi
 
 	local it_options
 	if is_tty ; then

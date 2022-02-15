@@ -36,9 +36,12 @@ CONTAINER_CLIENT = None
 
 # --- SUB-FUNCTIONS ---
 
-def check_asset_processor(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs):
+def check_asset_processor(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs, wait = False):
 	asset_processor_lock_file = project_dir / ASSET_PROCESSOR_LOCK_PATH
 	if asset_processor_lock_file.is_file():
+		if wait:
+			throw_error(Messages.ASSET_PROCESSOR_ALREADY_RUNNING, asset_processor_lock_file)
+
 		asset_processor_id = read_json_property(asset_processor_lock_file, InstanceProperties.HOSTNAME.value)
 
 		asset_processor_container = CONTAINER_CLIENT.get_container(asset_processor_id)
@@ -48,7 +51,7 @@ def check_asset_processor(engine_version, engine_config, engine_workflow, projec
 		overwrite_missing_asset_processor = False
 
 	if asset_processor_container is None:
-		asset_processor_container = run_runner(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs, False, RunnerCommands.OPEN, O3DE_EngineBinaries.ASSET_PROCESSOR, engine_config, overwrite_missing_asset_processor)
+		asset_processor_container = run_runner(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs, wait, RunnerCommands.OPEN, O3DE_EngineBinaries.ASSET_PROCESSOR, engine_config, overwrite_missing_asset_processor)
 		time.sleep(5)
 
 	return asset_processor_container
@@ -1747,7 +1750,7 @@ def manage_project_settings(project_dir, setting_key_section , setting_key_index
 	run_builder(None, None, project_dir, None, BuilderCommands.SETTINGS, Targets.PROJECT, setting_key_section, setting_key_index, setting_key_name, setting_value, clear, False, True)
 
 
-def open_project(project_dir, engine_config = None, new_engine_version = None):
+def open_project(project_dir, engine_config = None, new_engine_version = None, engine_binary = O3DE_EngineBinaries.EDITOR):
 	if new_engine_version is None:
 		engine_version, not_used, not_used, external_gem_dirs = check_project_dependencies(project_dir)
 	else:
@@ -1795,13 +1798,14 @@ def open_project(project_dir, engine_config = None, new_engine_version = None):
 		else:
 			throw_error(Messages.MISSING_INSTALL_ENGINE_PROJECT, engine_version)
 
-	asset_processor_container = check_asset_processor(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs)
+	asset_processor_container = check_asset_processor(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs, wait = (engine_binary is O3DE_EngineBinaries.ASSET_PROCESSOR))
 
-	container_command = [ RunnerCommands.OPEN, O3DE_EngineBinaries.EDITOR, engine_config ]
-	if NETWORK_NAME is None:
-		exec_in_runner(asset_processor_container, container_command)
-	else:
-		run_runner(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs, True, *container_command)
+	if engine_binary is not O3DE_EngineBinaries.ASSET_PROCESSOR:
+		container_command = [ RunnerCommands.OPEN, engine_binary, engine_config ]
+		if NETWORK_NAME is None:
+			exec_in_runner(asset_processor_container, container_command)
+		else:
+			run_runner(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs, True, *container_command)
 
 
 def run_project(project_dir, binary, config, level_name = None, console_commands = None, console_variables = None, connect_to_server = False, listen_on_port = None):
@@ -2199,7 +2203,10 @@ def parse_project_path(value):
 def handle_build_command(project_path, binary_name, config_name):
 	binary = O3DE_ProjectBinaries.from_value(binary_name)
 	if binary is None:
-		throw_error(Messages.INVALID_BINARY, binary_name)
+		if binary_name == CliSubCommands.ASSETS.value:
+			binary = O3DE_EngineBinaries.ASSET_PROCESSOR
+		else:
+			throw_error(Messages.INVALID_BINARY, binary_name)
 
 	config = O3DE_Configs.from_value(config_name)
 	if config is None:
@@ -2213,9 +2220,19 @@ def handle_build_command(project_path, binary_name, config_name):
 
 	try:
 		check_container_client()
-		check_builder()
 
-		build_project(project_dir, binary, config)
+		if isinstance(binary, O3DE_ProjectBinaries):
+			check_builder()
+
+			build_project(project_dir, binary, config)
+
+		elif isinstance(binary, O3DE_EngineBinaries):
+			check_runner()
+
+			open_project(project_dir, config, None, binary)
+
+		else:
+			throw_error(Messages.INVALID_BINARY, binary_name)
 
 	finally:
 		close_container_client()
@@ -2385,7 +2402,6 @@ def main():
 	if not RUN_CONTAINERS:
 		print_msg(Level.WARNING, Messages.IS_NO_CONTAINERS_MODE)
 
-	DESCRIPTIONS_COMMON_BINARY = "Project runtime: {}".format(", ".join([ binary.value for binary in O3DE_ProjectBinaries ]))
 	DESCRIPTIONS_COMMON_CONFIG = "Build configuration: {}".format(", ".join([ config.value for config in O3DE_Configs ]))
 	DESCRIPTIONS_COMMON_GEM = "Gem version"
 	DESCRIPTIONS_COMMON_GEM_REFERENCE = "Version name of an installed gem, or path to its local workspace"
@@ -2445,9 +2461,12 @@ def main():
 	DESCRIPTIONS_ADD_GEM_SKIP_REBUILD = "Don't re-build the project if the gem is added successfully"
 
 	DESCRIPTIONS_BUILD = "Build a project runtime from its source code"
-	DESCRIPTIONS_BUILD_BINARY = DESCRIPTIONS_COMMON_BINARY
 	DESCRIPTIONS_BUILD_CONFIG = DESCRIPTIONS_COMMON_CONFIG
 	DESCRIPTIONS_BUILD_PROJECT = DESCRIPTIONS_COMMON_PROJECT
+	DESCRIPTIONS_BUILD_ASSETS = "Process assets for a platform"
+	DESCRIPTIONS_BUILD_CLIENT = "Build a runtime with full capabilities (input, sound, video)"
+	DESCRIPTIONS_BUILD_SERVER = "Build a runtime that can receive connections from other clients"
+	DESCRIPTIONS_BUILD_TOOLS = "Build libraries required by the editor"
 	
 	DESCRIPTIONS_CLEAN = "Remove all built project files (binaries and intermediates)"
 	DESCRIPTIONS_CLEAN_CONFIG = DESCRIPTIONS_COMMON_CONFIG
@@ -2618,9 +2637,22 @@ def main():
 
 	build_parser = subparsers.add_parser(CliCommands.BUILD.value, parents = [ global_parser ], help = DESCRIPTIONS_BUILD)
 	build_parser.set_defaults(handler = handle_build_command)
-	build_parser.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "config_name", default = O3DE_DEFAULT_CONFIG.value, metavar = "<config>", help = DESCRIPTIONS_BUILD_CONFIG)
-	build_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PROJECT), dest = "project_path", metavar = "<path>", help = DESCRIPTIONS_BUILD_PROJECT)
-	build_parser.add_argument("binary_name", metavar = "binary", help = DESCRIPTIONS_BUILD_BINARY)
+	build_common_parser = argparse.ArgumentParser(add_help = False)
+	build_common_parser.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "config_name", default = O3DE_DEFAULT_CONFIG.value, metavar = "<config>", help = DESCRIPTIONS_BUILD_CONFIG)
+	build_common_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PROJECT), dest = "project_path", metavar = "<path>", help = DESCRIPTIONS_BUILD_PROJECT)
+	build_subparsers = build_parser.add_subparsers()
+
+	build_assets_parser = build_subparsers.add_parser(CliSubCommands.ASSETS.value, parents = [ global_parser, build_common_parser ], help = DESCRIPTIONS_BUILD_ASSETS)
+	build_assets_parser.set_defaults(binary_name = CliSubCommands.ASSETS.value)
+
+	build_client_parser = build_subparsers.add_parser(O3DE_ProjectBinaries.CLIENT.value, parents = [ global_parser, build_common_parser ], help = DESCRIPTIONS_BUILD_CLIENT)
+	build_client_parser.set_defaults(binary_name = O3DE_ProjectBinaries.CLIENT.value)
+
+	build_server_parser = build_subparsers.add_parser(O3DE_ProjectBinaries.SERVER.value, parents = [ global_parser, build_common_parser ], help = DESCRIPTIONS_BUILD_SERVER)
+	build_server_parser.set_defaults(binary_name = O3DE_ProjectBinaries.SERVER.value)
+
+	build_tools_parser = build_subparsers.add_parser(O3DE_ProjectBinaries.TOOLS.value, parents = [ global_parser, build_common_parser ], help = DESCRIPTIONS_BUILD_TOOLS)
+	build_tools_parser.set_defaults(binary_name = O3DE_ProjectBinaries.TOOLS.value)
 
 	clean_parser = subparsers.add_parser(CliCommands.CLEAN.value, parents = [ global_parser ], help = DESCRIPTIONS_CLEAN)
 	clean_parser.set_defaults(handler = handle_clean_command)
@@ -2766,7 +2798,18 @@ def main():
 			else:
 				throw_error(Messages.INVALID_SUBCOMMAND, help_command, help_subcommand)
 		elif help_command == CliCommands.BUILD.value:
-			help_parser = build_parser
+			if help_subcommand is None:
+				help_parser = build_parser
+			elif help_subcommand == CliSubCommands.ASSETS.value:
+				help_parser = build_assets_parser
+			elif help_subcommand == O3DE_ProjectBinaries.CLIENT.value:
+				help_parser = build_client_parser
+			elif help_subcommand == O3DE_ProjectBinaries.SERVER.value:
+				help_parser = build_server_parser
+			elif help_subcommand == O3DE_ProjectBinaries.TOOLS.value:
+				help_parser = build_tools_parser
+			else:
+				throw_error(Messages.INVALID_SUBCOMMAND, help_command, help_subcommand)
 		elif help_command == CliCommands.CLEAN.value:
 			help_parser = clean_parser
 		elif help_command == CliCommands.INIT.value:
