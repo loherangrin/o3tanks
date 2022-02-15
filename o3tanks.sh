@@ -650,6 +650,13 @@ init_globals()
 	readonly MESSAGES_UNSUPPORTED_SELECT_GPU_ID=16
 	readonly MESSAGES_VOLUMES_DIR_NOT_FOUND=17
 
+	readonly NETWORK_NAMES_NONE='none'
+	local network_name="${O3TANKS_NETWORK:-}"
+	if [ "${network_name}" = "${NETWORK_NAMES_NONE}" ]; then
+		network_name=''
+	fi
+	readonly NETWORK_NAME="${network_name}"
+
 	readonly OS_FAMILIES_LINUX=1
 	readonly OS_FAMILIES_MAC=2
 
@@ -870,6 +877,9 @@ run_cli()
 		if [ "${gpu_driver}" = "${GPU_DRIVERS_NVIDIA_PROPRIETARY}" ] && gpu_driver_exists "${GPU_DRIVERS_INTEL}" ; then
 			export O3TANKS_GPU_RENDER_OFFLOAD='true'
 		fi
+		if [ -n "${NETWORK_NAME}" ]; then
+			export O3TANKS_NETWORK_NAME=''
+		fi
 
 		"${PYTHON_BIN_FILE}" -m "o3tanks.cli" "$0" "${BIN_FILE}" "-" "$@"
 		return
@@ -902,10 +912,12 @@ run_cli()
 			local command
 			local subcommand
 			case ${1:-} in
-				("${COMMANDS_ADD}"|"${COMMANDS_INIT}"|"${COMMANDS_REMOVE}")
+				("${COMMANDS_ADD}"|"${COMMANDS_INIT}"|"${COMMANDS_REMOVE}"|"${COMMANDS_RUN}")
 					command="${1}"
-					subcommand="${2}"
-					shift
+					subcommand="${2:-}"
+					if [ -n "${subcommand}" ]; then
+						shift
+					fi
 					;;
 
 				(*)
@@ -1071,6 +1083,13 @@ run_cli()
 		it_options=''
 	fi
 
+	local network_env
+	if [ -n "${NETWORK_NAME}" ]; then
+		network_env="--env O3TANKS_NETWORK_NAME=${NETWORK_NAME}"
+	else
+		network_env=''
+	fi
+
 	local cli_image
 	cli_image=$(get_image_name "${IMAGES_CLI}")
 
@@ -1086,6 +1105,7 @@ run_cli()
 		${dev_mount} \
 		${display_env} \
 		${gpu_env} \
+		${network_env} \
 		${project_mount} \
 		"${cli_image}" \
 		"$0" "${BIN_FILE}" "${docker_root_dir}" "$@"

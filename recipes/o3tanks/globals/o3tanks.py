@@ -113,12 +113,14 @@ class LongOptions(ObjectEnum):
 	CONSOLE_VARIABLE = "console-variable"
 	COMMIT = "commit"
 	CONFIG = "config"
+	CONNECT_TO = "connect"
 	ENGINE = "engine"
 	FORCE = "force"
 	FORK = "fork"
 	HELP = CliCommands.HELP.value
 	INCREMENTAL = "incremental"
 	LEVEL = "level"
+	LISTEN_ON = "listen"
 	MINIMAL_PROJECT = "minimal"
 	PATH = "path"
 	PROJECT = "project"
@@ -150,6 +152,12 @@ class ShortOptions(ObjectEnum):
 	QUIET = 'q'
 	VERBOSE = 'v'
 	WORKFLOW = 'w'
+
+
+class InstanceProperties(ObjectEnum):
+	HOSTNAME = JsonPropertyKey(None, None, "hostname")
+	IP = JsonPropertyKey(None, None, "ip")
+	PORT = JsonPropertyKey(None, None, "port")
 
 
 class Settings(ObjectEnum):
@@ -288,6 +296,9 @@ GPU_RENDER_GROUP_ID = init_from_env("O3TANKS_GPU_RENDER_GROUP", int, -1)
 GPU_VIDEO_GROUP_ID = init_from_env("O3TANKS_GPU_VIDEO_GROUP", int, -1)
 GPU_CARD_IDS = init_from_env("O3TANKS_GPU_IDS", list, None)
 
+NETWORK_NAME = init_from_env("O3TANKS_NETWORK_NAME", str, None) if RUN_CONTAINERS else None
+NETWORK_SUBNET = init_from_env("O3TANKS_NETWORK_SUBNET", str, None)
+
 OPERATING_SYSTEM = get_os()
 
 PROJECT_EXTRA_PATH = pathlib.PurePath(".o3tanks")
@@ -295,6 +306,8 @@ PUBLIC_PROJECT_EXTRA_PATH = PROJECT_EXTRA_PATH / "public"
 PRIVATE_PROJECT_EXTRA_PATH = PROJECT_EXTRA_PATH / "private"
 PUBLIC_PROJECT_SETTINGS_PATH = PUBLIC_PROJECT_EXTRA_PATH / "settings.json"
 PRIVATE_PROJECT_SETTINGS_PATH = PRIVATE_PROJECT_EXTRA_PATH / "settings.json"
+ASSET_PROCESSOR_LOCK_PATH = PRIVATE_PROJECT_EXTRA_PATH / "asset-processor.json"
+SERVER_LOCK_PATH = PRIVATE_PROJECT_EXTRA_PATH / "server.json"
 
 USER_NAME = "user"
 USER_GROUP = USER_NAME

@@ -34,6 +34,7 @@ class Messages(AutoEnum):
 	ADD_GEM_COMPLETED = enum.auto()
 	ADD_GEM_COMPLETED_SKIP_REBUILD = enum.auto()
 	ADD_GEM_REBUILD = enum.auto()
+	ASSET_PROCESSOR_ALREADY_RUNNING = enum.auto()
 	BINARY_ERROR = enum.auto()
 	BINDING_DIFFERENT_REPOSITORY = enum.auto()
 	BINDING_DIFFERENT_WORKFLOW = enum.auto()
@@ -61,6 +62,7 @@ class Messages(AutoEnum):
 	ENGINE_SOURCE_NOT_FOUND = enum.auto()
 	ERROR_BUILD_IMAGE = enum.auto()
 	ERROR_SAVE_IMAGE = enum.auto()
+	EXCEED_MAX_PORT_ATTEMPTS = enum.auto()
 	EXIT_CODE_NOT_FOUND = enum.auto()
 	FAST_FORWARD_ONLY = enum.auto()
 	GEM_ALREADY_ADDED = enum.auto()
@@ -111,10 +113,12 @@ class Messages(AutoEnum):
 	INVALID_IMAGE_IN_NO_CONTAINERS_MODE = enum.auto()
 	INVALID_INSTALL_OPTIONS_INCREMENTAL = enum.auto()
 	INVALID_INSTALL_OPTIONS_SAVE_IMAGES = enum.auto()
+	INVALID_INSTANCE_FILE = enum.auto()
 	INVALID_LFS = enum.auto()
 	INVALID_LOCAL_BRANCH = enum.auto()
 	INVALID_REMOTE_BRANCH = enum.auto()
 	INVALID_DEPENDENCY_RESULT_VALUE = enum.auto()
+	INVALID_NETWORK = enum.auto()
 	INVALID_OPERATING_SYSTEM = enum.auto()
 	INVALID_OPTION = enum.auto()
 	INVALID_PACKAGE_MANAGER_RESULT = enum.auto()
@@ -127,6 +131,8 @@ class Messages(AutoEnum):
 	INVALID_REPOSITORY_URL_HASH = enum.auto()
 	INVALID_SERIALIZATION = enum.auto()
 	INVALID_SERIALIZATION_INPUT = enum.auto()
+	INVALID_SERVER_ADDRESS = enum.auto()
+	INVALID_SERVER_PORT = enum.auto()
 	INVALID_SETTING_DATA = enum.auto()
 	INVALID_SETTING_FILE = enum.auto()
 	INVALID_SETTING_NAME = enum.auto()
@@ -144,6 +150,7 @@ class Messages(AutoEnum):
 	IS_DEVELOPMENT_MODE = enum.auto()
 	IS_NO_CONTAINERS_MODE = enum.auto()
 	LFS_NOT_FOUND = enum.auto()
+	MISSING_ASSET_PROCESSOR = enum.auto()
 	MISSING_BINARY = enum.auto()
 	MISSING_BOUND_VERSION = enum.auto()
 	MISSING_CLANG = enum.auto()
@@ -166,6 +173,7 @@ class Messages(AutoEnum):
 	MISSING_PROPERTY = enum.auto()
 	MISSING_PYTHON = enum.auto()
 	MISSING_REPOSITORY = enum.auto()
+	MISSING_SERVER_FILE = enum.auto()
 	MISSING_SETTING_KEY = enum.auto()
 	MISSING_VERSION = enum.auto()
 	MULTIPLE_GEMS_IN_WORKSPACE = enum.auto()
@@ -183,6 +191,7 @@ class Messages(AutoEnum):
 	RUN_RESUME_COMMAND = enum.auto()
 	SAVE_QUESTION = enum.auto()
 	SETTINGS_NOT_FOUND = enum.auto()
+	SERVER_PORT_ALREADY_USED = enum.auto()
 	SOURCE_ALREADY_EXISTS = enum.auto()
 	SOURCE_NOT_FOUND = enum.auto()
 	START_DOWNLOAD_SOURCE = enum.auto()
@@ -280,6 +289,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Gem '{}' is now active. Please use '" + print_command(CliCommands.BUILD) + "' to rebuild the project and make changes to take effect"
 	elif message_id == Messages.ADD_GEM_REBUILD:
 		message_text = "Gem '{}' is now active. Rebuilding the project to make changes to take effect..."
+	elif message_id == Messages.ASSET_PROCESSOR_ALREADY_RUNNING:
+		message_text = "An instance of Asset Processor is already registered for this project. Please close it before try to run another one. If none is left, please delete the lock file at: {}"
 	elif message_id == Messages.BINARY_ERROR:
 		message_text = "An error occurred while executing a required binary: {}"
 	elif message_id == Messages.BINDING_DIFFERENT_REPOSITORY:
@@ -334,6 +345,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Unable to build the missing image: {}. Please build it manually"
 	elif message_id == Messages.ERROR_SAVE_IMAGE:
 		message_text = "Unable to save the image with the final installation: {}"
+	elif message_id == Messages.EXCEED_MAX_PORT_ATTEMPTS:
+		message_text = "Unable to find an empty port on your system (exceeding max. attempts: {})"
 	elif message_id == Messages.EXIT_CODE_NOT_FOUND:
 		message_text = "Unable to calculate the exit code of the last container from image '{}'. Assuming it was an error..."
 	elif message_id == Messages.FAST_FORWARD_ONLY:
@@ -438,6 +451,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Invalid options combination. Incremental mode can be used only when '" + print_option(LongOptions.WORKFLOW_SDK) + "' is set"
 	elif message_id == Messages.INVALID_INSTALL_OPTIONS_SAVE_IMAGES:
 		message_text = "Invalid options combination. Images can be generated only when '" + print_option(LongOptions.WORKFLOW_SDK) + "' is set"
+	elif message_id == Messages.INVALID_INSTANCE_FILE:
+		message_text = "One or more required properties are missing in the instance definition at: {}"
 	elif message_id == Messages.INVALID_LFS:
 		message_text = "Invalid LFS URL: {}"
 	elif message_id == Messages.INVALID_LOCAL_BRANCH:
@@ -446,6 +461,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Unable to parse the remote branch tracked by local branch '{}'"
 	elif message_id == Messages.INVALID_DEPENDENCY_RESULT_VALUE:
 		message_text = "Invalid dependency result value: {}"
+	elif message_id == Messages.INVALID_NETWORK:
+		message_text = "No network was found with name: {}. Please check the value of O3TANKS_NETWORK or create the network using 'docker network create'"
 	elif message_id == Messages.INVALID_OPERATING_SYSTEM:
 		message_text = "The current operating system is not supported: {}"
 	elif message_id == Messages.INVALID_OPTION:
@@ -470,6 +487,10 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Unable to serialize an item: {}. Reason: unsupported output type '{}'"
 	elif message_id == Messages.INVALID_SERIALIZATION_INPUT:
 		message_text = "Unable to serialize an item: {}. Reason: only '{}' are supported as input type, received '{}'"
+	elif message_id == Messages.INVALID_SERVER_ADDRESS:
+		message_text = "Invalid server address: {}. Please use the following formats: <hostname>:<port> or <ip_v4>:<port>"
+	elif message_id == Messages.INVALID_SERVER_PORT:
+		message_text = "Invalid server port: {}. Please use only an integer value"
 	elif message_id == Messages.INVALID_SETTING_DATA:
 		message_text = "Setting file at '{}' is corrupted: {}"
 	elif message_id == Messages.INVALID_SETTING_FILE:
@@ -500,6 +521,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "[Running in NO_CONTAINERS_MODE]"
 	elif message_id == Messages.LFS_NOT_FOUND:
 		message_text = "Unable to read LFS URL to setup '{}' remote"
+	elif message_id == Messages.MISSING_ASSET_PROCESSOR:
+		message_text = "A running instance of the asset processor is required, but none was found"
 	elif message_id == Messages.MISSING_BINARY:
 		message_text = "No binary exists at: {}. Do you have built the project with: config='{}' binary='{}'?"
 	elif message_id == Messages.MISSING_BOUND_VERSION:
@@ -544,6 +567,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Unable to find a valid Python 3 installation"
 	elif message_id == Messages.MISSING_REPOSITORY:
 		message_text = "Repository URL cannot be empty"
+	elif message_id == Messages.MISSING_SERVER_FILE:
+		message_text = "A primary server is required, but none was found. Please use '" + print_command(CliCommands.RUN) + " server' to run a new one and try again, or remove the option " + print_option(LongOptions.CONNECT_TO) + " from this command"
 	elif message_id == Messages.MISSING_SETTING_KEY:
 		message_text = "Setting key cannot be empty"
 	elif message_id == Messages.MISSING_VERSION:
@@ -578,6 +603,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Do you want to save them"
 	elif message_id == Messages.SETTINGS_NOT_FOUND:
 		message_text = "No setting was found for this project"
+	elif message_id == Messages.SERVER_PORT_ALREADY_USED:
+		message_text = "Port {} is already in use. Please provide another port using option " + print_option(LongOptions.LISTEN_ON)
 	elif message_id == Messages.SOURCE_ALREADY_EXISTS:
 		message_text = "Source code was already cloned"
 	elif message_id == Messages.SOURCE_NOT_FOUND:
