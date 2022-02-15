@@ -341,11 +341,28 @@ def register_gems(cli_file, project_dir, gems_dir, external_gems_dir, show_unman
 				is_managed = True
 				break
 
-		if not is_managed:
-			unmanaged_external_dirs.append(old_external_dir)
-
-		if not is_managed or not pathlib.PurePath(old_external_dir).is_absolute():
+		is_relative = not pathlib.PurePath(old_external_dir).is_absolute()
+		if is_relative or not is_managed:
 			restore_external_dirs.append(old_external_dir)
+
+		if is_managed:
+			continue
+
+		is_inside_project = False
+		if is_relative:
+			try:
+				absolute_external_dir = (project_dir / old_external_dir).resolve(strict = True)
+				if project_dir in absolute_external_dir.parents:
+					old_external_dir = [ str(absolute_external_dir), old_external_dir ]
+					is_inside_project = True
+
+			except:
+				pass
+
+		if is_inside_project:
+			new_external_gems.append(old_external_dir)
+		else:
+			unmanaged_external_dirs.append(old_external_dir)			
 
 	if len(unmanaged_external_dirs) == 0 and len(new_external_gems) == 0:
 		return restore_external_dirs
