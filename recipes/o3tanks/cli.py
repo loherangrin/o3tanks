@@ -1765,13 +1765,37 @@ def open_project(project_dir, engine_config = None, new_engine_version = None):
 	run_runner(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs, RunnerCommands.OPEN, engine_config)
 
 
-def run_project(project_dir, binary, config): 
+def run_project(project_dir, binary, config, console_commands = None, console_variables = None):
 	engine_version, not_used, engine_workflow, external_gem_dirs = check_project_dependencies(project_dir)
 
 	if not binary in [ O3DE_ProjectBinaries.CLIENT, O3DE_ProjectBinaries.SERVER]:
 		throw_error(Messages.INVALID_BINARY, binary)
 
-	run_runner(engine_version, config, engine_workflow, project_dir, external_gem_dirs, RunnerCommands.RUN, binary, config)
+	if console_commands is None:
+		console_commands = []
+	else:
+		for command in console_commands:
+			matches = parse_console_command(command)
+			if matches is None:
+				throw_error(Messages.INVALID_CONSOLE_COMMAND, command)
+
+	if console_variables is None:
+		console_variables = {}
+	else:
+		console_variables_dict = {}
+		for variable in console_variables:
+			matches = parse_console_variable(variable)
+			if matches is None:
+				throw_error(Messages.INVALID_CONSOLE_VARIABLE, variable)
+
+			variable_name = matches.group(1)
+			variable_value = matches.group(2)
+
+			console_variables_dict[variable_name] = variable_value
+
+		console_variables = console_variables_dict
+
+	run_runner(engine_version, config, engine_workflow, project_dir, external_gem_dirs, RunnerCommands.RUN, binary, config, console_commands, console_variables)
 
 
 # --- CLI HANDLER (GENERIC) ---
@@ -2174,7 +2198,7 @@ def handle_open_command(project_path, engine_config_name, new_engine_version):
 		close_container_client()
 
 
-def handle_run_command(project_path, binary_name, config_name):
+def handle_run_command(project_path, binary_name, config_name, console_commands, console_variables):
 	binary = O3DE_ProjectBinaries.from_value(binary_name)
 	if binary is None:
 		throw_error(Messages.INVALID_BINARY, binary_name)
@@ -2193,7 +2217,7 @@ def handle_run_command(project_path, binary_name, config_name):
 		check_container_client()
 		check_runner()
 
-		run_project(project_dir, binary, config)
+		run_project(project_dir, binary, config, console_commands, console_variables)
 
 	finally:
 		close_container_client()
@@ -2361,6 +2385,8 @@ def main():
 
 	DESCRIPTIONS_RUN = "Run a built project runtime"
 	DESCRIPTIONS_RUN_BINARY = DESCRIPTIONS_COMMON_BINARY
+	DESCRIPTIONS_RUN_CONSOLE_COMMAND = "Execute a console command"
+	DESCRIPTIONS_RUN_CONSOLE_VARIABLE = "Set a console variable (CVar)"
 	DESCRIPTIONS_RUN_CONFIG = DESCRIPTIONS_COMMON_CONFIG
 	DESCRIPTIONS_RUN_PROJECT = DESCRIPTIONS_COMMON_PROJECT
 
@@ -2545,6 +2571,8 @@ def main():
 	run_parser = subparsers.add_parser(CliCommands.RUN.value, parents = [ global_parser ], help = DESCRIPTIONS_RUN)
 	run_parser.set_defaults(handler = handle_run_command)
 	run_parser.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "config_name", default = O3DE_DEFAULT_CONFIG.value, metavar = "<config>", help = DESCRIPTIONS_RUN_CONFIG)
+	run_parser.add_argument(print_option(ShortOptions.CONSOLE_COMMAND), print_option(LongOptions.CONSOLE_COMMAND), dest = "console_commands", action = "append", metavar = "<command>[<arg0>,...]", help = DESCRIPTIONS_RUN_CONSOLE_COMMAND)
+	run_parser.add_argument(print_option(ShortOptions.CONSOLE_VARIABLE), print_option(LongOptions.CONSOLE_VARIABLE), dest = "console_variables", action = "append", metavar = "<variable>=<value>", help = DESCRIPTIONS_RUN_CONSOLE_VARIABLE)
 	run_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PROJECT), dest = "project_path", metavar = "<path>", help = DESCRIPTIONS_RUN_PROJECT)
 	run_parser.add_argument("binary_name", metavar = "binary", help = DESCRIPTIONS_RUN_BINARY)
 

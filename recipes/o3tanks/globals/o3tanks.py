@@ -109,6 +109,8 @@ class LongOptions(ObjectEnum):
 	ALIAS = "as"
 	BRANCH = "branch"
 	CLEAR = "clear"
+	CONSOLE_COMMAND = "console-command"
+	CONSOLE_VARIABLE = "console-variable"
 	COMMIT = "commit"
 	CONFIG = "config"
 	ENGINE = "engine"
@@ -136,6 +138,8 @@ class LongOptions(ObjectEnum):
 	WORKFLOW_SDK = "project-centric/engine-prebuilt"
 
 class ShortOptions(ObjectEnum):
+	CONSOLE_COMMAND = 'x'
+	CONSOLE_VARIABLE = 'a'
 	CONFIG = 'c'
 	ENGINE = 'e'
 	FORCE = 'f'

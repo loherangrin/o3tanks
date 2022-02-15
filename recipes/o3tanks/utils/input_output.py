@@ -48,6 +48,7 @@ class Messages(AutoEnum):
 	CHANGED_SETTINGS = enum.auto()
 	CLEAR_DIRECTORY = enum.auto()
 	CONFIG_NOT_INSTALLED = enum.auto()
+	CONSOLE_FILE_NOT_LOADED = enum.auto()
 	CONTAINER_CLIENT_ALREADY_RUNNING = enum.auto()
 	CONTAINER_ERROR = enum.auto()
 	CONTEXT_NOT_FOUND = enum.auto()
@@ -87,9 +88,13 @@ class Messages(AutoEnum):
 	INVALID_COMMAND = enum.auto()
 	INVALID_COMMIT = enum.auto()
 	INVALID_CONFIG = enum.auto()
+	INVALID_CONSOLE_COMMAND = enum.auto()
+	INVALID_CONSOLE_VARIABLE = enum.auto()
 	INVALID_CONTAINER_USER = enum.auto()
 	INVALID_DESERIALIZATION = enum.auto()
+	INVALID_DESERIALIZATION_CONTAINER = enum.auto()
 	INVALID_DESERIALIZATION_INPUT = enum.auto()
+	INVALID_DESERIALIZATION_LENGTH = enum.auto()
 	INVALID_DESERIALIZATION_OUTPUT = enum.auto()
 	INVALID_DIRECTORY = enum.auto()
 	INVALID_DISPLAY = enum.auto()
@@ -121,6 +126,7 @@ class Messages(AutoEnum):
 	INVALID_REPOSITORY_URL = enum.auto()
 	INVALID_REPOSITORY_URL_HASH = enum.auto()
 	INVALID_SERIALIZATION = enum.auto()
+	INVALID_SERIALIZATION_INPUT = enum.auto()
 	INVALID_SETTING_DATA = enum.auto()
 	INVALID_SETTING_FILE = enum.auto()
 	INVALID_SETTING_NAME = enum.auto()
@@ -301,6 +307,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Following directory will be removed: {}"
 	elif message_id == Messages.CONFIG_NOT_INSTALLED:
 		message_text = "No config '{}' was found for version '{}'"
+	elif message_id == Messages.CONSOLE_FILE_NOT_LOADED:
+		message_text = "'{0}' cannot be loaded automatically when at least one console variable or console command is provided. If still needed, please add it manually using: " + print_option(LongOptions.CONSOLE_COMMAND) + " exec[{0}]"
 	elif message_id == Messages.CONTAINER_CLIENT_ALREADY_RUNNING:
 		message_text = "Another container client is already running, it will be re-used"
 	elif message_id == Messages.CONTAINER_ERROR:
@@ -385,12 +393,20 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Invalid commit. Please provide a 40 digits hash value"
 	elif message_id == Messages.INVALID_CONFIG:
 		message_text = "Invalid configuration name: {}"
+	elif message_id == Messages.INVALID_CONSOLE_COMMAND:
+		message_text = "Unable to parse a console command due to an invalid syntax: {}.\nPlease use the following formats: <command_name>() or <command_name>(<argument_0>,<...>)"
+	elif message_id == Messages.INVALID_CONSOLE_VARIABLE:
+		message_text = "Unable to parse a console variable  due to an invalid syntax: {}.\nPlease use the following format: <variable_name>=<variable_value>"
 	elif message_id == Messages.INVALID_CONTAINER_USER:
 		message_text = "Unable to calculate the container user"
 	elif message_id == Messages.INVALID_DESERIALIZATION:
 		message_text = "Unable to deserialize an item: {}. Reason: unsupported output type '{}'"
+	elif message_id == Messages.INVALID_DESERIALIZATION_CONTAINER:
+		message_text = "Unable to deserialize items starting from index '{}'. Reason: unsupported container type '{}'"
 	elif message_id == Messages.INVALID_DESERIALIZATION_INPUT:
 		message_text = "Unable to deserialize an item: {}. Reason: only '{}' are supported as input type, received '{}'"
+	elif message_id == Messages.INVALID_DESERIALIZATION_LENGTH:
+		message_text = "Unable to deserialize items starting from index '{}'. Reason: {} index '{}' is exceeding the number of provided arguments ({})"
 	elif message_id == Messages.INVALID_DESERIALIZATION_OUTPUT:
 		message_text = "Unable to deserialize an item: {}. Reason: it isn't a valid value for type '{}'"
 	elif message_id == Messages.INVALID_DIRECTORY:
@@ -451,6 +467,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Repository cannot contain '#' symbols"
 	elif message_id == Messages.INVALID_SERIALIZATION:
 		message_text = "Unable to serialize an item: {}. Reason: unsupported output type '{}'"
+	elif message_id == Messages.INVALID_SERIALIZATION_INPUT:
+		message_text = "Unable to serialize an item: {}. Reason: only '{}' are supported as input type, received '{}'"
 	elif message_id == Messages.INVALID_SETTING_DATA:
 		message_text = "Setting file at '{}' is corrupted: {}"
 	elif message_id == Messages.INVALID_SETTING_FILE:

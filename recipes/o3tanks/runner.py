@@ -70,7 +70,7 @@ def run_asset_processor(engine_config, engine_workflow):
 	return asset_processor
 
 
-def run_binary(engine_workflow, binary_file, rendering = False, wait = True):
+def run_binary(engine_workflow, binary_file, options = {}, arguments = [], rendering = False, wait = True):
 	if engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK:
 		engine_dir = O3DE_ENGINE_INSTALL_DIR
 	else:
@@ -86,6 +86,15 @@ def run_binary(engine_workflow, binary_file, rendering = False, wait = True):
 
 	if rendering and (GPU_DRIVER_NAME is None):
 		command.append("--rhi=null")
+
+	for option_name, option_value in options.items():
+		if option_value is not None:
+			command.append("--{}={}".format(option_name, option_value))
+		else:
+			command.append("--{}".format(option_name))
+
+	for argument in arguments:
+		command.append(argument)
 
 	if wait:
 		result = subprocess.run(command)
@@ -120,15 +129,17 @@ def open_project(config):
 	exit(result.returncode)
 
 
-def run_project(binary, config):
+def run_project(binary, config, console_commands, console_variables):
 	project_name = read_json_property(O3DE_PROJECT_SOURCE_DIR / "project.json", JsonPropertyKey(None, None, "project_name"))
 	if project_name is None:
 		throw_error(Messages.INVALID_PROJECT_NAME)
 
 	if binary is O3DE_ProjectBinaries.CLIENT:
 		binary_name = "GameLauncher"
+		console_file_name = "client"
 	elif binary is O3DE_ProjectBinaries.SERVER:
 		binary_name = "ServerLauncher"
+		console_file_name = "server"
 	else:
 		throw_error(Messages.INVALID_BINARY, binary.value)
 
@@ -139,7 +150,41 @@ def run_project(binary, config):
 
 	old_gems = register_gems(O3DE_CLI_FILE, O3DE_PROJECT_SOURCE_DIR, O3DE_GEMS_DIR, O3DE_GEMS_EXTERNAL_DIR, show_unmanaged = True)
 
-	result = run_binary(engine_workflow, binary_file, rendering = True, wait = True)
+	options = {}
+	arguments = []
+
+	for variable_name, variable_value in console_variables.items():
+		arguments.append("+{}".format(variable_name))
+		arguments.append(variable_value)
+
+	for command in console_commands:
+		matches = parse_console_command(command)
+		if matches is None:
+			throw_error(Messages.INVALID_CONSOLE_COMMAND, command)
+
+		command_name = matches.group(1)
+		arguments.append("+{}".format(command_name))
+
+		command_arguments = matches.group(2)
+		if command_arguments is not None:
+			command_arguments = command_arguments.split(',')
+
+			for command_argument in command_arguments:
+				arguments.append(command_argument)
+
+	console_file = O3DE_PROJECT_SOURCE_DIR / "{}.cfg".format(console_file_name)
+	if console_file.is_file():
+		n_commands = len(console_commands)
+		n_variables = len(console_variables)
+
+		if n_commands == 0 and n_variables == 0:
+			options["console-command-file"] = console_file.name
+
+		else:
+			print_msg(Level.WARNING, Messages.CONSOLE_FILE_NOT_LOADED, console_file.name)
+
+	result = run_binary(engine_workflow, binary_file, options = options, arguments = arguments, rendering = True, wait = True)
+
 	error_code = result.returncode
 
 	if (DISPLAY_ID >= 0) and (error_code == -6):
@@ -176,7 +221,13 @@ def main():
 		binary = deserialize_arg(2, O3DE_ProjectBinaries)
 		config = deserialize_arg(3, O3DE_Configs)
 
-		run_project(binary, config)
+		index = 4
+		console_commands = deserialize_args(index, list, str)
+
+		index += len(console_commands) + 1
+		console_variables = deserialize_args(index, dict, str)
+
+		run_project(binary, config, console_commands, console_variables)
 
 	else:
 		throw_error(Messages.INVALID_COMMAND, command.value)
