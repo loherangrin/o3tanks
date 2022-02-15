@@ -109,6 +109,8 @@ class Images(ObjectEnum):
 class LongOptions(ObjectEnum):
 	ALIAS = "as"
 	BRANCH = "branch"
+	BUILD = "build"
+	CACHE = "cache"
 	CLEAR = "clear"
 	CONSOLE_COMMAND = "console-command"
 	CONSOLE_VARIABLE = "console-variable"
