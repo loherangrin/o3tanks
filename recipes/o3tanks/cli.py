@@ -1765,7 +1765,7 @@ def open_project(project_dir, engine_config = None, new_engine_version = None):
 	run_runner(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs, RunnerCommands.OPEN, engine_config)
 
 
-def run_project(project_dir, binary, config, console_commands = None, console_variables = None):
+def run_project(project_dir, binary, config, level_name = None, console_commands = None, console_variables = None):
 	engine_version, not_used, engine_workflow, external_gem_dirs = check_project_dependencies(project_dir)
 
 	if not binary in [ O3DE_ProjectBinaries.CLIENT, O3DE_ProjectBinaries.SERVER]:
@@ -1794,6 +1794,15 @@ def run_project(project_dir, binary, config, console_commands = None, console_va
 			console_variables_dict[variable_name] = variable_value
 
 		console_variables = console_variables_dict
+
+	if level_name is not None:
+		level_path = pathlib.Path("Levels/{0}/{0}.prefab".format(level_name))
+		level_file = project_dir / level_path
+		if not level_file.is_file():
+			throw_error(Messages.MISSING_LEVEL, (get_real_project_dir() if CONTAINER_CLIENT.is_in_container() else project_dir) / level_path)
+
+		level_command = "LoadLevel[{}]".format(level_path.with_suffix(".spawnable"))
+		console_commands.insert(0, level_command)
 
 	run_runner(engine_version, config, engine_workflow, project_dir, external_gem_dirs, RunnerCommands.RUN, binary, config, console_commands, console_variables)
 
@@ -2198,7 +2207,7 @@ def handle_open_command(project_path, engine_config_name, new_engine_version):
 		close_container_client()
 
 
-def handle_run_command(project_path, binary_name, config_name, console_commands, console_variables):
+def handle_run_command(project_path, binary_name, config_name, level_name, console_commands, console_variables):
 	binary = O3DE_ProjectBinaries.from_value(binary_name)
 	if binary is None:
 		throw_error(Messages.INVALID_BINARY, binary_name)
@@ -2217,7 +2226,7 @@ def handle_run_command(project_path, binary_name, config_name, console_commands,
 		check_container_client()
 		check_runner()
 
-		run_project(project_dir, binary, config, console_commands, console_variables)
+		run_project(project_dir, binary, config, level_name, console_commands, console_variables)
 
 	finally:
 		close_container_client()
@@ -2388,6 +2397,7 @@ def main():
 	DESCRIPTIONS_RUN_CONSOLE_COMMAND = "Execute a console command"
 	DESCRIPTIONS_RUN_CONSOLE_VARIABLE = "Set a console variable (CVar)"
 	DESCRIPTIONS_RUN_CONFIG = DESCRIPTIONS_COMMON_CONFIG
+	DESCRIPTIONS_RUN_LEVEL = "Start from a specific level"
 	DESCRIPTIONS_RUN_PROJECT = DESCRIPTIONS_COMMON_PROJECT
 
 	DESCRIPTIONS_SETTINGS = "View / modify the project settings (e.g. the linked engine version)"
@@ -2573,6 +2583,7 @@ def main():
 	run_parser.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "config_name", default = O3DE_DEFAULT_CONFIG.value, metavar = "<config>", help = DESCRIPTIONS_RUN_CONFIG)
 	run_parser.add_argument(print_option(ShortOptions.CONSOLE_COMMAND), print_option(LongOptions.CONSOLE_COMMAND), dest = "console_commands", action = "append", metavar = "<command>[<arg0>,...]", help = DESCRIPTIONS_RUN_CONSOLE_COMMAND)
 	run_parser.add_argument(print_option(ShortOptions.CONSOLE_VARIABLE), print_option(LongOptions.CONSOLE_VARIABLE), dest = "console_variables", action = "append", metavar = "<variable>=<value>", help = DESCRIPTIONS_RUN_CONSOLE_VARIABLE)
+	run_parser.add_argument(print_option(ShortOptions.LEVEL), print_option(LongOptions.LEVEL), dest = "level_name", metavar = "<level>", help = DESCRIPTIONS_RUN_LEVEL)
 	run_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PROJECT), dest = "project_path", metavar = "<path>", help = DESCRIPTIONS_RUN_PROJECT)
 	run_parser.add_argument("binary_name", metavar = "binary", help = DESCRIPTIONS_RUN_BINARY)
 
