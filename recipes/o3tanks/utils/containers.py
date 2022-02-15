@@ -447,7 +447,7 @@ class DockerContainerClient(ContainerClient):
 			stdout = (stdout or (not stdout and not stderr)),
 			stderr = stderr,
 			user = USER_NAME,
-			cmd = serialize_list(command),
+			cmd = serialize_list(command, False),
 			stream = (stdout or stderr),
 			socket = False,
 			demux = (stdout and stderr)
@@ -542,7 +542,7 @@ class DockerContainerClient(ContainerClient):
 			exit_status = None
 			container = self._client.containers.run(
 					image_name,
-					command = serialize_list(command),
+					command = serialize_list(command, False),
 					network_disabled = network_disabled,
 					auto_remove = True,
 					detach = True,
@@ -767,7 +767,7 @@ class NoneContainerClient(ContainerClient):
 
 		full_command = [ "python3", "-m", "o3tanks.{}".format(image_name) ]
 		if len(command) > 0:
-			full_command += serialize_list(command)
+			full_command += serialize_list(command, False)
 
 		return full_command
 

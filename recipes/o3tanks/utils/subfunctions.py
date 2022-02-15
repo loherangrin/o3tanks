@@ -195,6 +195,16 @@ def is_project(path):
 	return ((path / "game.cfg").is_file() and get_project_manifest_file(path).is_file())
 
 
+def parse_console_command(command):
+	matches = re.match(r"^([\w]+)\[([^,]+(,[^,]+)*)?\]$", command)
+	return matches
+
+
+def parse_console_variable(variable):
+	matches = re.match(r"^([\w]+)=(.+)$", variable)
+	return matches
+
+
 def parse_gem_reference(value, resolve_path = False):
 	matches = re.match(r"^engine/(([^/]+)(/[0-1])?)$", value)
 	if matches is not None:
