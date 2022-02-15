@@ -28,6 +28,17 @@ class O3DE_Configs(ObjectEnum):
 	RELEASE = "release"
 
 
+class O3DE_ConsoleVariables(ObjectEnum):
+	NETWORK_CLIENT_REMOTE_IP = "cl_serverAddr"
+	NETWORK_CLIENT_REMOTE_PORT = "cl_serverPort"
+	NETWORK_SERVER_LISTENING_PORT = "sv_port"
+
+
+class O3DE_EngineBinaries(ObjectEnum):
+	ASSET_PROCESSOR = "asset-processor"
+	EDITOR = "editor"
+
+
 class O3DE_GemTemplates(ObjectEnum):
 	ASSETS_ONLY = "AssetGem"
 	CODE_AND_ASSETS = "DefaultGem"

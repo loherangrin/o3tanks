@@ -26,6 +26,7 @@ import os
 import re
 import sys
 import textwrap
+import time
 
 
 # --- VARIABLES ---
@@ -34,6 +35,24 @@ CONTAINER_CLIENT = None
 
 
 # --- SUB-FUNCTIONS ---
+
+def check_asset_processor(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs):
+	asset_processor_lock_file = project_dir / ASSET_PROCESSOR_LOCK_PATH
+	if asset_processor_lock_file.is_file():
+		asset_processor_id = read_json_property(asset_processor_lock_file, InstanceProperties.HOSTNAME.value)
+
+		asset_processor_container = CONTAINER_CLIENT.get_container(asset_processor_id)
+		overwrite_missing_asset_processor = (asset_processor_container is None)
+	else:
+		asset_processor_container = None
+		overwrite_missing_asset_processor = False
+
+	if asset_processor_container is None:
+		asset_processor_container = run_runner(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs, False, RunnerCommands.OPEN, O3DE_EngineBinaries.ASSET_PROCESSOR, engine_config, overwrite_missing_asset_processor)
+		time.sleep(5)
+
+	return asset_processor_container
+
 
 def check_project_dependencies(project_dir, config = None, check_engine = True, check_gems = True):
 	was_config_missing = False
@@ -802,6 +821,15 @@ def close_container_client():
 		CONTAINER_CLIENT = None
 
 
+def exec_in_runner(container, command):
+	full_command = [ "python3", "-u", "-m", "o3tanks.{}".format(Images.RUNNER.value) ]
+	if len(command) > 0:
+		full_command += serialize_list(command, False)
+
+	executed = CONTAINER_CLIENT.exec_in_container(container, full_command, True, True)
+	return executed
+
+
 def print_version_info():
 	print("O3Tanks version {}".format(get_version_number()))
 	print("A containerized version manager for 'O3DE (Open 3D Engine)'")
@@ -850,7 +878,8 @@ def run_builder(engine_version, engine_config, project_dir, external_gem_dirs, *
 		scripts_dir = get_real_bin_file().parent / SCRIPTS_PATH
 		binds[str(scripts_dir)] = str(ROOT_DIR)
 
-	completed = CONTAINER_CLIENT.run_foreground_container(
+	completed = CONTAINER_CLIENT.run_container(
+		ContainerRunMode.FOREGROUND,
 		builder_image,
 		list(command),
 		interactive = is_tty(),
@@ -861,7 +890,7 @@ def run_builder(engine_version, engine_config, project_dir, external_gem_dirs, *
 	return completed
 
 
-def run_runner(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs, *command):
+def run_runner(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs, wait, *command):
 	if engine_config is None:
 		throw_error(Messages.MISSING_CONFIG)
 
@@ -922,14 +951,17 @@ def run_runner(engine_version, engine_config, engine_workflow, project_dir, exte
 		scripts_dir = get_real_bin_file().parent / SCRIPTS_PATH
 		binds[str(scripts_dir)] = str(ROOT_DIR)
 
-	completed =	CONTAINER_CLIENT.run_foreground_container(
+	completed =	CONTAINER_CLIENT.run_container(
+		ContainerRunMode.FOREGROUND if wait else ContainerRunMode.BACKGROUND,
 		runner_image,
 		list(command),
-		interactive = is_tty(),
+		interactive = is_tty() if wait else False,
 		display = True,
 		gpu = True,
 		binds = binds,
-		volumes = volumes
+		volumes = volumes,
+		network_name = NETWORK_NAME,
+		network_disabled = False if (NETWORK_NAME is not None) else True
 	)
 
 	return completed
@@ -956,7 +988,8 @@ def run_updater(engine_version, command, target, *arguments):
 		scripts_dir = get_real_bin_file().parent / SCRIPTS_PATH
 		binds[str(scripts_dir)] = str(ROOT_DIR)
 
-	completed = CONTAINER_CLIENT.run_foreground_container(
+	completed = CONTAINER_CLIENT.run_container(
+		ContainerRunMode.FOREGROUND,
 		updater_image,
 		[ command, target, *arguments ],
 		interactive = is_tty(),
@@ -1234,7 +1267,7 @@ def install_engine(repository, engine_version, engine_config, engine_workflow, f
 
 			new_container = None
 			try:
-				new_container = CONTAINER_CLIENT.run_detached_container(from_image, wait = True, network_disabled = True)
+				new_container = CONTAINER_CLIENT.run_container(ContainerRunMode.STANDBY, from_image, network_disabled = True)
 
 				config_dir = get_install_config_path(O3DE_ENGINE_INSTALL_DIR, engine_config)
 
@@ -1762,10 +1795,16 @@ def open_project(project_dir, engine_config = None, new_engine_version = None):
 		else:
 			throw_error(Messages.MISSING_INSTALL_ENGINE_PROJECT, engine_version)
 
-	run_runner(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs, RunnerCommands.OPEN, engine_config)
+	asset_processor_container = check_asset_processor(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs)
+
+	container_command = [ RunnerCommands.OPEN, O3DE_EngineBinaries.EDITOR, engine_config ]
+	if NETWORK_NAME is None:
+		exec_in_runner(asset_processor_container, container_command)
+	else:
+		run_runner(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs, True, *container_command)
 
 
-def run_project(project_dir, binary, config, level_name = None, console_commands = None, console_variables = None):
+def run_project(project_dir, binary, config, level_name = None, console_commands = None, console_variables = None, connect_to_server = False, listen_on_port = None):
 	engine_version, not_used, engine_workflow, external_gem_dirs = check_project_dependencies(project_dir)
 
 	if not binary in [ O3DE_ProjectBinaries.CLIENT, O3DE_ProjectBinaries.SERVER]:
@@ -1795,6 +1834,44 @@ def run_project(project_dir, binary, config, level_name = None, console_commands
 
 		console_variables = console_variables_dict
 
+	if binary is O3DE_ProjectBinaries.CLIENT:
+		if isinstance(connect_to_server, str):
+			matches = re.match(r"^(([a-zA-Z][\w.-]*)|([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})):([0-9]+)$", connect_to_server)
+			if matches is None:
+				throw_error(Messages.INVALID_SERVER_ADDRESS, connect_to_server)
+
+			server_ip = matches.group(1)
+			server_port = matches.group(4)
+
+		else:
+			server_lock_file = project_dir / SERVER_LOCK_PATH
+			if server_lock_file.is_file():
+				server_ip = read_json_property(server_lock_file, InstanceProperties.IP.value)
+				server_port = read_json_property(server_lock_file, InstanceProperties.PORT.value)
+
+			elif connect_to_server is None:
+				throw_error(Messages.MISSING_SERVER_FILE)
+
+			else:
+				server_ip = None
+				server_port = None
+
+		if (server_ip is not None) and (server_port is not None):
+			console_variables[O3DE_ConsoleVariables.NETWORK_CLIENT_REMOTE_IP.value] = server_ip
+			console_variables[O3DE_ConsoleVariables.NETWORK_CLIENT_REMOTE_PORT.value] = server_port
+
+			if connect_to_server is not False:
+				console_commands.insert(0, "connect[]")
+
+	if listen_on_port is not None:
+		try:
+			server_port = int(listen_on_port)
+		except:
+			throw_error(Messages.INVALID_SERVER_PORT, listen_on_port)
+
+		console_variables[O3DE_ConsoleVariables.NETWORK_SERVER_LISTENING_PORT.value] = server_port
+		console_commands.insert(0, "host[]")
+
 	if level_name is not None:
 		level_path = pathlib.Path("Levels/{0}/{0}.prefab".format(level_name))
 		level_file = project_dir / level_path
@@ -1804,7 +1881,13 @@ def run_project(project_dir, binary, config, level_name = None, console_commands
 		level_command = "LoadLevel[{}]".format(level_path.with_suffix(".spawnable"))
 		console_commands.insert(0, level_command)
 
-	run_runner(engine_version, config, engine_workflow, project_dir, external_gem_dirs, RunnerCommands.RUN, binary, config, console_commands, console_variables)
+	asset_processor_container = check_asset_processor(engine_version, config, engine_workflow, project_dir, external_gem_dirs)
+
+	container_command = [ RunnerCommands.RUN, binary, config, console_commands, console_variables ]
+	if NETWORK_NAME is None:
+		exec_in_runner(asset_processor_container, container_command)
+	else:	
+		run_runner(engine_version, config, engine_workflow, project_dir, external_gem_dirs, True, *container_command)
 
 
 # --- CLI HANDLER (GENERIC) ---
@@ -2207,7 +2290,7 @@ def handle_open_command(project_path, engine_config_name, new_engine_version):
 		close_container_client()
 
 
-def handle_run_command(project_path, binary_name, config_name, level_name, console_commands, console_variables):
+def handle_run_command(project_path, binary_name, config_name, level_name, console_commands, console_variables, connect_to_server, listen_on_port):
 	binary = O3DE_ProjectBinaries.from_value(binary_name)
 	if binary is None:
 		throw_error(Messages.INVALID_BINARY, binary_name)
@@ -2226,7 +2309,7 @@ def handle_run_command(project_path, binary_name, config_name, level_name, conso
 		check_container_client()
 		check_runner()
 
-		run_project(project_dir, binary, config, level_name, console_commands, console_variables)
+		run_project(project_dir, binary, config, level_name, console_commands, console_variables, connect_to_server, listen_on_port)
 
 	finally:
 		close_container_client()
@@ -2393,12 +2476,15 @@ def main():
 	DESCRIPTIONS_REMOVE_GEM_SKIP_REBUILD = "Don't re-build the project if the gem is removed successfully"
 
 	DESCRIPTIONS_RUN = "Run a built project runtime"
-	DESCRIPTIONS_RUN_BINARY = DESCRIPTIONS_COMMON_BINARY
 	DESCRIPTIONS_RUN_CONSOLE_COMMAND = "Execute a console command"
 	DESCRIPTIONS_RUN_CONSOLE_VARIABLE = "Set a console variable (CVar)"
 	DESCRIPTIONS_RUN_CONFIG = DESCRIPTIONS_COMMON_CONFIG
 	DESCRIPTIONS_RUN_LEVEL = "Start from a specific level"
 	DESCRIPTIONS_RUN_PROJECT = DESCRIPTIONS_COMMON_PROJECT
+	DESCRIPTIONS_RUN_CLIENT = "Run an instance with full capabilities (input, sound and video)"
+	DESCRIPTIONS_RUN_CLIENT_CONNECT = "Connect to the primary server (or a specific one)"
+	DESCRIPTIONS_RUN_SERVER = "Run an instance that can accept connections from other clients"
+	DESCRIPTIONS_RUN_SERVER_LISTEN = "Listen on a specific port"
 
 	DESCRIPTIONS_SETTINGS = "View / modify the project settings (e.g. the linked engine version)"
 	DESCRIPTIONS_SETTINGS_KEY = "Setting identifier, or <empty> for all settings"
@@ -2579,13 +2665,22 @@ def main():
 	remove_gem_parser.add_argument("gem_value", metavar="reference", help = DESCRIPTIONS_REMOVE_GEM_VERSION)
 
 	run_parser = subparsers.add_parser(CliCommands.RUN.value, parents = [ global_parser ], help = DESCRIPTIONS_RUN)
-	run_parser.set_defaults(handler = handle_run_command)
-	run_parser.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "config_name", default = O3DE_DEFAULT_CONFIG.value, metavar = "<config>", help = DESCRIPTIONS_RUN_CONFIG)
-	run_parser.add_argument(print_option(ShortOptions.CONSOLE_COMMAND), print_option(LongOptions.CONSOLE_COMMAND), dest = "console_commands", action = "append", metavar = "<command>[<arg0>,...]", help = DESCRIPTIONS_RUN_CONSOLE_COMMAND)
-	run_parser.add_argument(print_option(ShortOptions.CONSOLE_VARIABLE), print_option(LongOptions.CONSOLE_VARIABLE), dest = "console_variables", action = "append", metavar = "<variable>=<value>", help = DESCRIPTIONS_RUN_CONSOLE_VARIABLE)
-	run_parser.add_argument(print_option(ShortOptions.LEVEL), print_option(LongOptions.LEVEL), dest = "level_name", metavar = "<level>", help = DESCRIPTIONS_RUN_LEVEL)
-	run_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PROJECT), dest = "project_path", metavar = "<path>", help = DESCRIPTIONS_RUN_PROJECT)
-	run_parser.add_argument("binary_name", metavar = "binary", help = DESCRIPTIONS_RUN_BINARY)
+	run_parser.set_defaults(handler = handle_empty_target)
+	run_common_parser = argparse.ArgumentParser(add_help = False)
+	run_common_parser.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "config_name", default = O3DE_DEFAULT_CONFIG.value, metavar = "<config>", help = DESCRIPTIONS_RUN_CONFIG)
+	run_common_parser.add_argument(print_option(ShortOptions.CONSOLE_COMMAND), print_option(LongOptions.CONSOLE_COMMAND), dest = "console_commands", action = "append", metavar = "<command>[<arg0>,...]", help = DESCRIPTIONS_RUN_CONSOLE_COMMAND)
+	run_common_parser.add_argument(print_option(ShortOptions.CONSOLE_VARIABLE), print_option(LongOptions.CONSOLE_VARIABLE), dest = "console_variables", action = "append", metavar = "<variable>=<value>", help = DESCRIPTIONS_RUN_CONSOLE_VARIABLE)
+	run_common_parser.add_argument(print_option(ShortOptions.LEVEL), print_option(LongOptions.LEVEL), dest = "level_name", metavar = "<level>", help = DESCRIPTIONS_RUN_LEVEL)
+	run_common_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PROJECT), dest = "project_path", metavar = "<path>", help = DESCRIPTIONS_RUN_PROJECT)
+	run_subparsers = run_parser.add_subparsers()
+
+	run_client_parser = run_subparsers.add_parser(O3DE_ProjectBinaries.CLIENT.value, parents = [ global_parser, run_common_parser ], help = DESCRIPTIONS_RUN_CLIENT)
+	run_client_parser.set_defaults(handler = handle_run_command, binary_name = O3DE_ProjectBinaries.CLIENT.value, listen_on_port = None)
+	run_client_parser.add_argument(print_option(LongOptions.CONNECT_TO), dest = "connect_to_server", nargs = "?", default = False, metavar = "<ip>:<port>", help = DESCRIPTIONS_RUN_CLIENT_CONNECT)
+
+	run_server_parser = run_subparsers.add_parser(O3DE_ProjectBinaries.SERVER.value, parents = [ global_parser, run_common_parser ], help = DESCRIPTIONS_RUN_SERVER)
+	run_server_parser.set_defaults(handler = handle_run_command, binary_name = O3DE_ProjectBinaries.SERVER.value, connect_to_server = False)
+	run_server_parser.add_argument(print_option(LongOptions.LISTEN_ON), dest = "listen_on_port", metavar = "<port>", help = DESCRIPTIONS_RUN_SERVER_LISTEN)
 
 	settings_parser = subparsers.add_parser(CliCommands.SETTINGS.value, parents = [ global_parser ], help = DESCRIPTIONS_SETTINGS)
 	settings_parser.set_defaults(handler = handle_settings_command)
@@ -2693,7 +2788,14 @@ def main():
 			else:
 				throw_error(Messages.INVALID_SUBCOMMAND, help_command, help_subcommand)
 		elif help_command == CliCommands.RUN.value:
-			help_parser = run_parser
+			if help_subcommand is None:
+				help_parser = run_parser
+			elif help_subcommand == O3DE_ProjectBinaries.CLIENT.value:
+				help_parser = run_client_parser
+			elif help_subcommand == O3DE_ProjectBinaries.SERVER.value:
+				help_parser = run_server_parser
+			else:
+				throw_error(Messages.INVALID_SUBCOMMAND, help_command, help_subcommand)
 		elif help_command == CliCommands.SETTINGS.value:
 			help_parser = settings_parser
 		elif help_command == CliCommands.HELP.value:

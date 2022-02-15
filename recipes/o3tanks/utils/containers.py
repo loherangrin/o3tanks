@@ -43,6 +43,12 @@ class ContainerBackend(AutoEnum):
 	DOCKER = enum.auto()
 
 
+class ContainerRunMode(AutoEnum):
+	BACKGROUND = enum.auto()
+	FOREGROUND = enum.auto()
+	STANDBY = enum.auto()
+
+
 # --- ABSTRACT BASE CLIENT ---
 
 class ContainerClient(abc.ABC):
@@ -217,12 +223,12 @@ class ContainerClient(abc.ABC):
 
 
 	@abc.abstractmethod
-	def run_detached_container(self, image_name, wait, environment = {}, mounts = [], network_disabled = False):
-		raise NotImplementedError
+	def get_container(self, id):
+		raise NotImplemented
 
 
 	@abc.abstractmethod
-	def run_foreground_container(self, image_name, command = [], environment = {}, interactive = True, mounts = [], display = False, gpu = False, network_disabled = False):
+	def run_container(self, image_name, command = [], environment = {}, interactive = True, mounts = [], display = False, gpu = False, network_disabled = False, network_name = None):
 		raise NotImplementedError
 
 
@@ -272,6 +278,13 @@ class ContainerClient(abc.ABC):
 
 	@abc.abstractmethod
 	def remove_image(self, image_name):
+		raise NotImplementedError
+
+
+	# --- NETWORKS (BASE) ---
+
+	@abc.abstractmethod
+	def get_network_range(self, network_name):
 		raise NotImplementedError
 
 
@@ -461,35 +474,16 @@ class DockerContainerClient(ContainerClient):
 			return (exit_code == 0)
 
 
-	def run_detached_container(self, image_name, wait, environment = {}, binds = {}, volumes = {}, network_disabled = False):
-		if wait:
-			entrypoint = "/bin/sh",
-			command = [ "-c", "tail --follow /dev/null" ]
-		else:
-			entrypoint = None
-			command = []
+	def get_container(self, id):
+		try:
+			container = self._client.containers.get(id)
+			return container
 
-		full_environment = ContainerClient._get_environment_variables()
-		if len(environment) > 0:
-			full_environment.update(environment)
-
-		mounts = DockerContainerClient._calculate_mounts(binds, volumes)
-
-		new_container = self._client.containers.run(
-			image_name,
-			entrypoint = entrypoint,
-			command = command,
-			network_disabled = network_disabled,
-			auto_remove = True,
-			detach = True,
-			mounts = mounts,
-			environment = full_environment
-		)
-
-		return new_container
+		except docker.errors.NotFound:
+			return None
 
 
-	def run_foreground_container(self, image_name, command = [], environment = {}, interactive = True, binds = {}, volumes = {}, display = False, gpu = False, network_disabled = False):
+	def run_container(self, mode, image_name, command = [], environment = {}, interactive = True, binds = {}, volumes = {}, display = False, gpu = False, network_disabled = False, network_name = None):
 		full_environment = ContainerClient._get_environment_variables()
 
 		mounts = DockerContainerClient._calculate_mounts(binds, volumes)
@@ -538,12 +532,31 @@ class DockerContainerClient(ContainerClient):
 		if len(environment) > 0:
 			full_environment.update(environment)
 
+		if network_disabled:
+			network_name = None
+		elif network_name is not None:
+			full_environment["O3TANKS_NETWORK_NAME"] = network_name
+
+			network_subnet = self.get_network_range(network_name)
+			if network_subnet is None:
+				throw_error(Messages.INVALID_NETWORK, network_name)
+
+			full_environment["O3TANKS_NETWORK_SUBNET"] = network_subnet
+
+		if mode == ContainerRunMode.STANDBY:
+			entrypoint = "/bin/sh",
+			command = [ "-c", "tail --follow /dev/null" ]
+		else:
+			entrypoint = None
+
+		exit_code = None
 		try:
-			exit_status = None
 			container = self._client.containers.run(
 					image_name,
+					entrypoint = entrypoint,
 					command = serialize_list(command, False),
 					network_disabled = network_disabled,
+					network = network_name,
 					auto_remove = True,
 					detach = True,
 					devices = devices,
@@ -552,16 +565,20 @@ class DockerContainerClient(ContainerClient):
 					environment = full_environment
 				)
 
-			logs = container.attach(stdout = True, stderr = True, stream = True)
-			ContainerClient._print_bytes_stream(logs, stdout = True, stderr = True)
+			if mode is ContainerRunMode.FOREGROUND:
+				logs = container.attach(stdout = True, stderr = True, stream = True)
+				ContainerClient._print_bytes_stream(logs, stdout = True, stderr = True)
 
-			exit_status = container.wait()
+				exit_status = container.wait()
+				exit_code = exit_status.get("StatusCode")
+
+			else:
+				return container
 
 		finally:
-			if (exit_status is None) and (container is not None):
+			if (mode is ContainerRunMode.FOREGROUND) and (exit_code is None) and (container is not None):
 				container.kill()
 
-		exit_code = exit_status.get("StatusCode")
 		if exit_code is None:
 			throw_error(Messages.EXIT_CODE_NOT_FOUND, image_name)
 		elif exit_code != 0:
@@ -660,6 +677,17 @@ class DockerContainerClient(ContainerClient):
 			self._client.images.remove(image_name)
 
 		return True
+
+
+	# --- NETWORKS (DOCKER) ---
+
+	def get_network_range(self, network_name):
+		try:
+			network = self._client.networks.get(network_name)
+			return network.attrs["IPAM"]["Config"][0]["Subnet"]
+
+		except docker.errors.NotFound:
+			return None
 
 
 	# --- VOLUMES (DOCKER) ---
@@ -853,28 +881,18 @@ class NoneContainerClient(ContainerClient):
 		throw_error(Messages.UNSUPPORTED_CONTAINERS_AND_NO_CLIENT)
 
 
+	def get_container(self, id):
+		return -1
+
+
 	def exec_in_container(self, container, command, stdout = False, stderr = False):
 		throw_error(Messages.UNSUPPORTED_CONTAINERS_AND_NO_CLIENT)
 
 
-	def run_detached_container(self, image_name, wait, environment = {}, binds = {}, volumes = {}, network_disabled = False):
-		if wait:
+	def run_container(self, mode, image_name, command = [], environment = {}, interactive = True, binds = {}, volumes = {}, display = False, gpu = False, network_disabled = False, network_name = None):
+		if mode is ContainerRunMode.STANDBY:
 			throw_error(Messages.UNSUPPORTED_CONTAINERS_AND_NO_CLIENT)
 
-		full_command = self._calculate_command(image_name, [])
-
-		full_environment = NoneContainerClient._get_environment_variables()
-		if len(environment) > 0:
-			full_environment.update(environment)
-
-		mapping = self._calculate_mounts_mapping(binds, volumes)
-		full_environment.update(mapping)
-
-		handler = NoneContainerClient._execute_python(full_command, full_environment, wait = False)
-		return handler
-
-
-	def run_foreground_container(self, image_name, command = [], environment = {}, interactive = True, binds = {}, volumes = {}, display = False, gpu = False, network_disabled = False):
 		full_command = self._calculate_command(image_name, command)
 
 		full_environment = NoneContainerClient._get_environment_variables()
@@ -900,12 +918,17 @@ class NoneContainerClient(ContainerClient):
 
 		result = NoneContainerClient._execute_python(full_command, full_environment, wait = True)
 
-		exit_code = result.returncode
-		if exit_code != 0:
-			print_msg(Level.ERROR, Messages.CONTAINER_ERROR, image_name, exit_code)
-			return False
+		if mode is ContainerRunMode.FOREGROUND:
+			exit_code = result.returncode
+			if exit_code != 0:
+				print_msg(Level.ERROR, Messages.CONTAINER_ERROR, image_name, exit_code)
+				return False
 
-		return True
+			return True
+
+		else:
+			handler = NoneContainerClient._execute_python(full_command, full_environment, wait = False)
+			return handler
 
 
 	# --- IMAGES (NONE) ---
@@ -931,6 +954,12 @@ class NoneContainerClient(ContainerClient):
 
 	def remove_image(self, image_name):
 		return True
+
+
+	# --- NETWORKS (NONE) ---
+
+	def get_network_range(self, network_name):
+		throw_error(Messages.UNSUPPORTED_CONTAINERS_AND_NO_CLIENT)
 
 
 	# --- VOLUMES (NONE) ---
