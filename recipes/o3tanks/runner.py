@@ -23,6 +23,7 @@ from .utils.types import *
 import random
 import socket
 import subprocess
+import time
 import typing
 
 
@@ -31,6 +32,7 @@ import typing
 DEFAULT_ASSET_PROCESSOR_LISTENING_PORT = 45643
 DEFAULT_SERVER_PORT = 33450
 
+MIN_VALID_EXECUTION_TIME = 15 #sec
 MAX_NEW_PORT_ATTEMPTS = 10
 
 # --- TYPES ---
@@ -148,7 +150,7 @@ def run_binary(engine_workflow, binary_file, options = {}, arguments = [], rende
 		engine_dir = O3DE_ENGINE_SOURCE_DIR
 
 	command = [
-		binary_file,
+		str(binary_file),
 		"--engine-path={}".format(engine_dir),
 		"--project-path={}".format(O3DE_PROJECT_SOURCE_DIR),
 		"--regset=/Amazon/AzCore/Bootstrap/engine_path={}".format(engine_dir),
@@ -167,11 +169,12 @@ def run_binary(engine_workflow, binary_file, options = {}, arguments = [], rende
 	for argument in arguments:
 		command.append(argument)
 
+	command = " ".join(command)
 	if wait:
-		result = subprocess.run(command)
+		result = subprocess.run(command, shell = True)
 		return result
 	else:
-		handler = subprocess.Popen(command)
+		handler = subprocess.Popen(command, shell = True)
 		return handler
 
 
@@ -325,12 +328,22 @@ def run_project(binary, config, console_commands, console_variables):
 		else:
 			print_msg(Level.WARNING, Messages.CONSOLE_FILE_NOT_LOADED, console_file.name)
 
+	start_time = time.time()
 	result = run_binary(engine_workflow, binary_file, options = options, arguments = arguments, rendering = True, wait = True)
+	execution_time = time.time() - start_time
 
 	exit_code = result.returncode
 	if exit_code != 0:
 		if (DISPLAY_ID >= 0) and (exit_code == -6):
 			print_msg(Level.ERROR, Messages.UNREACHABLE_X11_DISPLAY, DISPLAY_ID, REAL_USER.uid)
+
+		elif (exit_code == 134) and (execution_time < MIN_VALID_EXECUTION_TIME):
+			result = run_binary(engine_workflow, binary_file, options = options, arguments = arguments, rendering = True, wait = True)
+			exit_code = result.returncode
+
+			if exit_code != 0:
+				print_msg(Level.ERROR, Messages.BINARY_ERROR, binary_file)
+
 		else:
 			print_msg(Level.ERROR, Messages.BINARY_ERROR, binary_file)
 
