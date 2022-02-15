@@ -118,6 +118,7 @@ class LongOptions(ObjectEnum):
 	FORK = "fork"
 	HELP = CliCommands.HELP.value
 	INCREMENTAL = "incremental"
+	LEVEL = "level"
 	MINIMAL_PROJECT = "minimal"
 	PATH = "path"
 	PROJECT = "project"
@@ -144,6 +145,7 @@ class ShortOptions(ObjectEnum):
 	ENGINE = 'e'
 	FORCE = 'f'
 	HELP = 'h'
+	LEVEL = 'l'
 	PROJECT = 'p'
 	QUIET = 'q'
 	VERBOSE = 'v'

@@ -159,6 +159,7 @@ class Messages(AutoEnum):
 	MISSING_INSTALL_ENGINE_CONFIG = enum.auto()
 	MISSING_INSTALL_ENGINE_PROJECT= enum.auto()
 	MISSING_INSTALL_GEM = enum.auto()
+	MISSING_LEVEL = enum.auto()
 	MISSING_MODULE = enum.auto()
 	MISSING_PACKAGES = enum.auto()
 	MISSING_PROJECT = enum.auto()
@@ -529,6 +530,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "A gem for this project is not installed, but it is available at: {}"
 	elif message_id == Messages.MISSING_INSTALL_AND_CONFIG:
 		message_text = "Unable to find an engine installation for version '{}' and config '{}'. Please use '" + print_command(CliCommands.INSTALL) + "' to add it and try again"
+	elif message_id == Messages.MISSING_LEVEL:
+		message_text = "Unable to find a level file at: {}"
 	elif message_id == Messages.MISSING_MODULE:
 		message_text = "Unable to find '{0}' module.\nPlease add it to your Python installation using:\npython -m pip install {0}"
 	elif message_id == Messages.MISSING_PACKAGES:
