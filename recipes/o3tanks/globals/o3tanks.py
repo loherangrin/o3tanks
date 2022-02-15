@@ -51,6 +51,7 @@ class CliCommands(ObjectEnum):
 
 
 class CliSubCommands(ObjectEnum):
+	ASSETS = "assets"
 	ENGINE = "engine"
 	GEM = "gem"
 	PROJECT = "project"
