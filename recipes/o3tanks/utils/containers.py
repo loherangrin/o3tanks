@@ -494,10 +494,7 @@ class DockerContainerClient(ContainerClient):
 
 		mounts = DockerContainerClient._calculate_mounts(binds, volumes)
 
-		if display:
-			if DISPLAY_ID < 0:
-				throw_error(Messages.MISSING_DISPLAY)
-
+		if display and (DISPLAY_ID >= 0):
 			x11_socket = pathlib.Path("/tmp/.X11-unix/X{}".format(DISPLAY_ID))
 			if not self.is_in_container() and not x11_socket.is_socket():
 				throw_error(Messages.INVALID_DISPLAY, DISPLAY_ID, x11_socket)
@@ -512,35 +509,31 @@ class DockerContainerClient(ContainerClient):
 
 		devices = []
 		device_requests = []
-		if gpu:
-			if GPU_DRIVER_NAME is None:
-				print_msg(Level.WARNING, Messages.MISSING_GPU)
+		if gpu and (GPU_DRIVER_NAME is not None):
+			full_environment["O3TANKS_GPU_DRIVER"] = GPU_DRIVER_NAME.value
+
+			if GPU_DRIVER_NAME is GPUDrivers.NVIDIA_PROPRIETARY:
+				gpu_request = docker.types.DeviceRequest(capabilities = [ [ "gpu", "display", "graphics", "video" ] ])
+				if GPU_CARD_IDS is None:
+					gpu_request.count = -1
+				else:
+					gpu_request.device_ids = GPU_CARD_IDS
+
+				device_requests.append(gpu_request)
+
+				vulkan_configs = [
+					"/usr/share/vulkan/implicit_layer.d/nvidia_layers.json",
+					"/usr/share/vulkan/icd.d/nvidia_icd.json"
+				]
+
+				for config_file in vulkan_configs:
+					mounts.append(docker.types.Mount(type = "bind", source = config_file, target = config_file, read_only = True))
+
+			elif GPU_DRIVER_NAME in [ GPUDrivers.AMD_OPEN, GPUDrivers.AMD_PROPRIETARY, GPUDrivers.INTEL ]:
+				devices.append("/dev/dri:/dev/dri")
 
 			else:
-				full_environment["O3TANKS_GPU_DRIVER"] = GPU_DRIVER_NAME.value
-
-				if GPU_DRIVER_NAME is GPUDrivers.NVIDIA_PROPRIETARY:
-					gpu_request = docker.types.DeviceRequest(capabilities = [ [ "gpu", "display", "graphics", "video" ] ])
-					if GPU_CARD_IDS is None:
-						gpu_request.count = -1
-					else:
-						gpu_request.device_ids = GPU_CARD_IDS
-
-					device_requests.append(gpu_request)
-
-					vulkan_configs = [
-						"/usr/share/vulkan/implicit_layer.d/nvidia_layers.json",
-						"/usr/share/vulkan/icd.d/nvidia_icd.json"
-					]
-
-					for config_file in vulkan_configs:
-						mounts.append(docker.types.Mount(type = "bind", source = config_file, target = config_file, read_only = True))
-
-				elif GPU_DRIVER_NAME in [ GPUDrivers.AMD_OPEN, GPUDrivers.AMD_PROPRIETARY, GPUDrivers.INTEL ]:
-					devices.append("/dev/dri:/dev/dri")
-
-				else:
-					print_msg(Level.WARNING, Messages.INVALID_GPU, GPU_DRIVER_NAME.value)
+				print_msg(Level.WARNING, Messages.INVALID_GPU, GPU_DRIVER_NAME.value)
 
 		if len(environment) > 0:
 			full_environment.update(environment)
@@ -886,18 +879,16 @@ class NoneContainerClient(ContainerClient):
 
 		full_environment = NoneContainerClient._get_environment_variables()
 
-		if display and (OPERATING_SYSTEM.family is OSFamilies.LINUX):
-			if DISPLAY_ID < 0:
-				throw_error(Messages.MISSING_DISPLAY)
+		if OPERATING_SYSTEM.family is OSFamilies.LINUX:
+			if display and (DISPLAY_ID >= 0):
+				x11_socket = pathlib.Path("/tmp/.X11-unix/X{}".format(DISPLAY_ID))
+				if not x11_socket.is_socket():
+					throw_error(Messages.INVALID_DISPLAY, DISPLAY_ID, x11_socket)
 
-			x11_socket = pathlib.Path("/tmp/.X11-unix/X{}".format(DISPLAY_ID))
-			if not x11_socket.is_socket():
-				throw_error(Messages.INVALID_DISPLAY, DISPLAY_ID, x11_socket)
+				full_environment["O3TANKS_DISPLAY_ID"] = str(DISPLAY_ID)
+				full_environment["DISPLAY"] = ":{}".format(DISPLAY_ID)
 
-			full_environment["O3TANKS_DISPLAY_ID"] = str(DISPLAY_ID)
-			full_environment["DISPLAY"] = ":{}".format(DISPLAY_ID)
-
-			if (GPU_DRIVER_NAME is GPUDrivers.NVIDIA_PROPRIETARY) and GPU_RENDER_OFFLOAD:
+			if gpu and (GPU_DRIVER_NAME is GPUDrivers.NVIDIA_PROPRIETARY) and GPU_RENDER_OFFLOAD:
 				full_environment["__NV_PRIME_RENDER_OFFLOAD"] = str(1)
 				full_environment["__VK_LAYER_NV_optimus"] = "NVIDIA_only"
 

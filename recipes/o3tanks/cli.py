@@ -861,7 +861,7 @@ def run_builder(engine_version, engine_config, project_dir, external_gem_dirs, *
 	return completed
 
 
-def run_runner(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs, headless, *command):
+def run_runner(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs, *command):
 	if engine_config is None:
 		throw_error(Messages.MISSING_CONFIG)
 
@@ -918,13 +918,6 @@ def run_runner(engine_version, engine_config, engine_workflow, project_dir, exte
 		for external_gem_dir in external_gem_dirs:
 			binds[str(external_gem_dir)] = str(get_external_gem_path(O3DE_GEMS_EXTERNAL_DIR, external_gem_dir))
 
-	if not headless:
-		has_display = True
-		has_gpu = True
-	else:
-		has_display = False
-		has_gpu = False
-
 	if DEVELOPMENT_MODE:
 		scripts_dir = get_real_bin_file().parent / SCRIPTS_PATH
 		binds[str(scripts_dir)] = str(ROOT_DIR)
@@ -933,8 +926,8 @@ def run_runner(engine_version, engine_config, engine_workflow, project_dir, exte
 		runner_image,
 		list(command),
 		interactive = is_tty(),
-		display = has_display,
-		gpu = has_gpu,
+		display = True,
+		gpu = True,
 		binds = binds,
 		volumes = volumes
 	)
@@ -1769,20 +1762,16 @@ def open_project(project_dir, engine_config = None, new_engine_version = None):
 		else:
 			throw_error(Messages.MISSING_INSTALL_ENGINE_PROJECT, engine_version)
 
-	run_runner(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs, False, RunnerCommands.OPEN, engine_config)
+	run_runner(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs, RunnerCommands.OPEN, engine_config)
 
 
-def run_project(project_dir, binary, config):	
+def run_project(project_dir, binary, config): 
 	engine_version, not_used, engine_workflow, external_gem_dirs = check_project_dependencies(project_dir)
-	
-	if binary is O3DE_ProjectBinaries.CLIENT:
-		headless = False
-	elif binary is O3DE_ProjectBinaries.SERVER:
-		headless = True
-	else:
+
+	if not binary in [ O3DE_ProjectBinaries.CLIENT, O3DE_ProjectBinaries.SERVER]:
 		throw_error(Messages.INVALID_BINARY, binary)
 
-	run_runner(engine_version, config, engine_workflow, project_dir, external_gem_dirs, headless, RunnerCommands.RUN, binary, config)
+	run_runner(engine_version, config, engine_workflow, project_dir, external_gem_dirs, RunnerCommands.RUN, binary, config)
 
 
 # --- CLI HANDLER (GENERIC) ---

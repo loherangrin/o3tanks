@@ -46,6 +46,10 @@ get_message_text()
 			echo "Unable to calculate the user namespace for the container user"
 			;;
 
+		("${MESSAGES_MISSING_DISPLAY}")
+			echo "A display is expected, but none was found. If you want to run in headless mode, please set O3TANKS_DISPLAY to '${DISPLAY_TYPES_NONE}'"
+			;;
+
 		("${MESSAGES_MISSING_DOCKER}")
 			echo "Unable to find 'docker'"
 			;;
@@ -601,17 +605,6 @@ init_globals()
 	is_development=$(is_env_active "${O3TANKS_DEV_MODE:-}")
 	readonly DEVELOPMENT_MODE="${is_development}"
 
-	local display_id="${O3TANKS_DISPLAY_ID:-}"
-	if [ -z "${display_id}" ]; then
-		display_id="${DISPLAY:-}"
-	fi
-	case ${display_id} in
-		(:*)
-			display_id="${display_id#:}"
-			;;
-	esac
-	readonly DISPLAY_ID="${display_id}"
-
 	readonly COMMANDS_ADD='add'
 	readonly COMMANDS_BUILD='build'
 	readonly COMMANDS_CLEAN='clean'
@@ -622,6 +615,8 @@ init_globals()
 	readonly COMMANDS_SETTINGS='settings'
 
 	readonly SUBCOMMANDS_GEM='gem'
+
+	readonly DISPLAY_TYPES_NONE='none'
 
 	readonly GPU_DRIVERS_AMD_OPEN='amdgpu'
 	readonly GPU_DRIVERS_AMD_PROPRIETARY='amdgpu-pro'
@@ -643,16 +638,17 @@ init_globals()
 	readonly MESSAGES_INVALID_OPERATING_SYSTEM=4
 	readonly MESSAGES_INVALID_SYMLINK=5
 	readonly MESSAGES_INVALID_USER_NAMESPACE=6
-	readonly MESSAGES_MISSING_DOCKER=7
-	readonly MESSAGES_MISSING_ANY_GPU=8
-	readonly MESSAGES_MISSING_DEDICATED_GPU=9
-	readonly MESSAGES_MISSING_INTEGRATED_GPU=10
-	readonly MESSAGES_MISSING_NVIDIA_DOCKER=11
-	readonly MESSAGES_MISSING_NVIDIA_DRIVER=12
-	readonly MESSAGES_MISSING_PYTHON=13
-	readonly MESSAGES_UNSUPPORTED_CONTAINTERS_MODE=14
-	readonly MESSAGES_UNSUPPORTED_SELECT_GPU_ID=15
-	readonly MESSAGES_VOLUMES_DIR_NOT_FOUND=16
+	readonly MESSAGES_MISSING_DISPLAY=7
+	readonly MESSAGES_MISSING_DOCKER=8
+	readonly MESSAGES_MISSING_ANY_GPU=9
+	readonly MESSAGES_MISSING_DEDICATED_GPU=10
+	readonly MESSAGES_MISSING_INTEGRATED_GPU=11
+	readonly MESSAGES_MISSING_NVIDIA_DOCKER=12
+	readonly MESSAGES_MISSING_NVIDIA_DRIVER=13
+	readonly MESSAGES_MISSING_PYTHON=14
+	readonly MESSAGES_UNSUPPORTED_CONTAINTERS_MODE=15
+	readonly MESSAGES_UNSUPPORTED_SELECT_GPU_ID=16
+	readonly MESSAGES_VOLUMES_DIR_NOT_FOUND=17
 
 	readonly OS_FAMILIES_LINUX=1
 	readonly OS_FAMILIES_MAC=2
@@ -778,10 +774,31 @@ init_globals()
 
 run_cli()
 {
+	local display_id
 	local gpu_driver
 	local gpu_ids=''
 	case ${1:-} in
 		("${COMMANDS_OPEN}"|"${COMMANDS_RUN}")
+			display_id="${O3TANKS_DISPLAY:-}"
+			if [ -z "${display_id}" ]; then
+				display_id="${DISPLAY:-}"
+			fi
+			case ${display_id} in
+				('')
+					if [ "${HOST_OPERATING_SYSTEM}" = "${OS_FAMILIES_LINUX}" ]; then
+						throw_error "${MESSAGES_MISSING_DISPLAY}"
+					fi
+					;;
+
+				(${DISPLAY_TYPES_NONE})
+					display_id=''
+					;;
+
+				(:*)
+					display_id="${display_id#:}"
+					;;
+			esac
+
 			local gpu_value="${O3TANKS_GPU:-}"
 
 			case ${gpu_value} in
@@ -789,7 +806,7 @@ run_cli()
 					gpu_driver=$(get_gpu_driver)
 
 					if [ -z "${gpu_driver}" ]; then
-						throw_error "${MESSAGES_ANY_GPU}"
+						throw_error "${MESSAGES_MISSING_ANY_GPU}"
 					fi
 					;;
 
@@ -832,6 +849,7 @@ run_cli()
 			;;
 
 		(*)
+			display_id=''
 			gpu_driver=''
 			;;
 	esac
@@ -840,8 +858,8 @@ run_cli()
 		check_python
 		
 		export PYTHONPATH="${BIN_DIR}/${RECIPES_PATH}:${PYTHONPATH:-}"
-		if [ -n "${DISPLAY_ID}" ]; then
-			export O3TANKS_DISPLAY_ID="${DISPLAY_ID}"
+		if [ -n "${display_id}" ]; then
+			export O3TANKS_DISPLAY_ID="${display_id}"
 		fi
 		if [ "${RUN_CONTAINERS_ALL}" = 'false' ]; then
 			export O3TANKS_NO_CONTAINERS='true'
@@ -1004,8 +1022,8 @@ run_cli()
 	fi
 
 	local display_env
-	if [ -n "${DISPLAY_ID}" ]; then
-		display_env="--env O3TANKS_DISPLAY_ID=${DISPLAY_ID}"
+	if [ -n "${display_id}" ]; then
+		display_env="--env O3TANKS_DISPLAY_ID=${display_id}"
 	else
 		display_env=''
 	fi
