@@ -60,7 +60,7 @@ def run_asset_processor(engine_config, engine_workflow):
 	time.sleep(1)
 	if asset_processor.poll() is not None:
 		error_code = asset_processor.returncode
-		if error_code == -6:
+		if (DISPLAY_ID >= 0) and (error_code == -6):
 			throw_error(Messages.UNREACHABLE_X11_DISPLAY, DISPLAY_ID, REAL_USER.uid)
 		else:
 			throw_error(Messages.BINARY_ERROR, asset_processor_file)
@@ -125,12 +125,10 @@ def run_project(binary, config):
 	if project_name is None:
 		throw_error(Messages.INVALID_PROJECT_NAME)
 
-	if binary == O3DE_ProjectBinaries.CLIENT:
+	if binary is O3DE_ProjectBinaries.CLIENT:
 		binary_name = "GameLauncher"
-		has_gui = True
-	elif binary == O3DE_ProjectBinaries.SERVER:
+	elif binary is O3DE_ProjectBinaries.SERVER:
 		binary_name = "ServerLauncher"
-		has_gui = False
 	else:
 		throw_error(Messages.INVALID_BINARY, binary.value)
 
@@ -143,12 +141,13 @@ def run_project(binary, config):
 
 	result = run_binary(engine_workflow, binary_file, rendering = True, wait = True)
 	error_code = result.returncode
-	if has_gui and (error_code == -6):
+
+	if (DISPLAY_ID >= 0) and (error_code == -6):
 		throw_error(Messages.UNREACHABLE_X11_DISPLAY, DISPLAY_ID, REAL_USER.uid)
 
 	clear_registered_gems(O3DE_PROJECT_SOURCE_DIR, old_gems)
 
-	exit(result.returncode)
+	exit(error_code)
 
 
 # --- MAIN ---
