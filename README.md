@@ -8,8 +8,11 @@ Features:
 - Check for engine updates and apply them automatically (if any).
 - Bind a project to a specific engine version.
 - Build, edit and run a project using its bound engine version.
+- Switch the engine usage between isolated containers and the host machine at anytime.
 
-**DISCLAIMER: This is an experimental tool at an early development stage. Its use in production environments is discouraged. Use it at your own risks!**
+A visual summary of all supported commands and how they interact with each other is available at:
+
+[![](https://github.com/loherangrin/o3tanks/wiki/cheat-sheets/o3tanks_cheatsheet_20220112_colors_thumb.png)](https://github.com/loherangrin/o3tanks/wiki/cheat-sheet)
 
 ## Install
 
