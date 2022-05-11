@@ -2281,7 +2281,7 @@ def handle_init_project_command(engine_version, project_path, alias, is_minimal_
 		close_container_client()
 
 
-def handle_open_command(project_path, engine_config_name, new_engine_version):
+def handle_open_editor_command(project_path, engine_config_name, new_engine_version):
 	if engine_config_name is not None:
 		engine_config = O3DE_Configs.from_value(engine_config_name)
 		if engine_config is None:
@@ -2489,10 +2489,11 @@ def main():
 	DESCRIPTIONS_INIT_GEM_SKIP_EXAMPLES = "Don't create a project to try the gem"
 	DESCRIPTIONS_INIT_GEM_TYPE = "Type of gem: {}".format(", ".join([ gem_type.value for gem_type in O3DE_GemTypes ]))
 
-	DESCRIPTIONS_OPEN = "Open the editor to view / modify the project"
-	DESCRIPTIONS_OPEN_CONFIG = DESCRIPTIONS_COMMON_CONFIG
-	DESCRIPTIONS_OPEN_ENGINE = "Override the linked engine version"
+	DESCRIPTIONS_OPEN = "Open the project with a tool"
 	DESCRIPTIONS_OPEN_PROJECT = DESCRIPTIONS_COMMON_PROJECT
+	DESCRIPTIONS_OPEN_EDITOR = "Open the editor to view / modify the project scenes"
+	DESCRIPTIONS_OPEN_EDITOR_CONFIG = DESCRIPTIONS_COMMON_CONFIG
+	DESCRIPTIONS_OPEN_EDITOR_ENGINE = "Override the linked engine version"
 
 	DESCRIPTIONS_REMOVE = "Remove an existing resource from the project"
 	DESCRIPTIONS_REMOVE_PROJECT = DESCRIPTIONS_COMMON_PROJECT
@@ -2687,11 +2688,16 @@ def main():
 	init_project_parser.add_argument(print_option(LongOptions.MINIMAL_PROJECT), dest = "is_minimal_project", action = "store_true", help = DESCRIPTIONS_INIT_PROJECT_MINIMAL)
 	init_project_parser.set_defaults(handler = handle_init_project_command)
 
-	open_parser = subparsers.add_parser(CliCommands.OPEN.value, parents = [ global_parser ], help = DESCRIPTIONS_OPEN)
-	open_parser.set_defaults(handler = handle_open_command)
-	open_parser.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "engine_config_name", default = None, metavar = "<config>", help = DESCRIPTIONS_OPEN_CONFIG)
-	open_parser.add_argument(print_option(ShortOptions.ENGINE), print_option(LongOptions.ENGINE), dest = "new_engine_version", default = None, metavar = "<version>", help = DESCRIPTIONS_OPEN_ENGINE)
-	open_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PROJECT), dest = "project_path", metavar = "<path>", help = DESCRIPTIONS_OPEN_PROJECT)
+	open_parser = subparsers.add_parser(CliCommands.OPEN.value, help = DESCRIPTIONS_OPEN)
+	open_parser.set_defaults(handler = handle_empty_target)
+	open_common_parser = argparse.ArgumentParser(add_help = False)
+	open_common_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PROJECT), dest = "project_path", metavar = "<path>", help = DESCRIPTIONS_OPEN_PROJECT)
+	open_subparsers = open_parser.add_subparsers()
+
+	open_editor_parser = open_subparsers.add_parser(O3DE_EngineBinaries.EDITOR.value, parents = [ global_parser, open_common_parser ], help = DESCRIPTIONS_OPEN_EDITOR)
+	open_editor_parser.set_defaults(handler = handle_open_editor_command)
+	open_editor_parser.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "engine_config_name", default = None, metavar = "<config>", help = DESCRIPTIONS_OPEN_EDITOR_CONFIG)
+	open_editor_parser.add_argument(print_option(ShortOptions.ENGINE), print_option(LongOptions.ENGINE), dest = "new_engine_version", default = None, metavar = "<version>", help = DESCRIPTIONS_OPEN_EDITOR_ENGINE)
 
 	remove_parser = subparsers.add_parser(CliCommands.REMOVE.value, help = DESCRIPTIONS_REMOVE)
 	remove_parser.set_defaults(handler = handle_empty_target)
@@ -2830,7 +2836,12 @@ def main():
 			else:
 				throw_error(Messages.INVALID_SUBCOMMAND, help_command, help_subcommand)
 		elif help_command == CliCommands.OPEN.value:
-			help_parser = open_parser
+			if help_subcommand is None:
+				help_parser = open_parser
+			elif help_subcommand == O3DE_EngineBinaries.EDITOR.value:
+				help_parser = open_editor_parser
+			else:
+				throw_error(Messages.INVALID_SUBCOMMAND, help_command, help_subcommand)
 		elif help_command == CliCommands.REMOVE.value:
 			if help_subcommand is None:
 				help_parser = remove_parser

@@ -54,7 +54,7 @@ o3tanks init project --as MyProject --engine development
 
 Open the editor to develop the project:
 ```
-o3tanks open
+o3tanks open editor
 ```
 
 Build and run an instance of the project:
