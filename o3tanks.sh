@@ -928,7 +928,7 @@ run_cli()
 			local command
 			local subcommand
 			case ${1:-} in
-				("${COMMANDS_ADD}"|"${COMMANDS_BUILD}"|"${COMMANDS_INIT}"|"${COMMANDS_REMOVE}"|"${COMMANDS_RUN}")
+				("${COMMANDS_ADD}"|"${COMMANDS_BUILD}"|"${COMMANDS_INIT}"|"${COMMANDS_OPEN}"|"${COMMANDS_REMOVE}"|"${COMMANDS_RUN}")
 					command="${1}"
 					subcommand="${2:-}"
 					if [ -n "${subcommand}" ]; then
