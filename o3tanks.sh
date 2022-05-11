@@ -610,6 +610,7 @@ init_globals()
 	readonly COMMANDS_CLEAN='clean'
 	readonly COMMANDS_EXPORT='export'
 	readonly COMMANDS_INIT='init'
+	readonly COMMANDS_INSTALL='install'
 	readonly COMMANDS_OPEN='open'
 	readonly COMMANDS_REMOVE='remove'
 	readonly COMMANDS_RUN='run'
@@ -617,6 +618,7 @@ init_globals()
 
 	readonly SUBCOMMANDS_ASSETS='assets'
 	readonly SUBCOMMANDS_GEM='gem'
+	readonly SUBCOMMANDS_PROJECT='project'
 
 	readonly DISPLAY_TYPES_NONE='none'
 
@@ -925,11 +927,11 @@ run_cli()
 
 	local project_mount
 	case ${1:-} in
-		("${COMMANDS_ADD}"|"${COMMANDS_BUILD}"|"${COMMANDS_CLEAN}"|"${COMMANDS_EXPORT}"|"${COMMANDS_INIT}"|"${COMMANDS_OPEN}"|"${COMMANDS_REMOVE}"|"${COMMANDS_RUN}"|"${COMMANDS_SETTINGS}")
+		("${COMMANDS_ADD}"|"${COMMANDS_BUILD}"|"${COMMANDS_CLEAN}"|"${COMMANDS_EXPORT}"|"${COMMANDS_INIT}"|"${COMMANDS_INSTALL}"|"${COMMANDS_OPEN}"|"${COMMANDS_REMOVE}"|"${COMMANDS_RUN}"|"${COMMANDS_SETTINGS}")
 			local command
 			local subcommand
 			case ${1:-} in
-				("${COMMANDS_ADD}"|"${COMMANDS_BUILD}"|"${COMMANDS_EXPORT}"|"${COMMANDS_INIT}"|"${COMMANDS_OPEN}"|"${COMMANDS_REMOVE}"|"${COMMANDS_RUN}")
+				("${COMMANDS_ADD}"|"${COMMANDS_BUILD}"|"${COMMANDS_EXPORT}"|"${COMMANDS_INIT}"|"${COMMANDS_INSTALL}"|"${COMMANDS_OPEN}"|"${COMMANDS_REMOVE}"|"${COMMANDS_RUN}")
 					command="${1}"
 					subcommand="${2:-}"
 					if [ -n "${subcommand}" ]; then
@@ -944,93 +946,98 @@ run_cli()
 			esac
 			shift
 
-			local new_args=''
+			if [ "${command}" = "${COMMANDS_INSTALL}" ] && ! [ "${subcommand}" = "${SUBCOMMANDS_PROJECT}" ]; then
+				set -- ${command} ${subcommand} $@
+				project_mount=''
+			else
+				local new_args=''
 
-			local project_dir=''
-			local project_option=''
+				local project_dir=''
+				local project_option=''
 
-			local was_option_name='false'
-			local was_option_value='false'
-			local first_argument=''
+				local was_option_name='false'
+				local was_option_value='false'
+				local first_argument=''
 
-			for arg in $@; do
-				if [ -n "${project_option}" ] && [ -z "${project_dir}" ]; then
-					project_dir="${arg}"
-					continue
+				for arg in $@; do
+					if [ -n "${project_option}" ] && [ -z "${project_dir}" ]; then
+						project_dir="${arg}"
+						continue
+					fi
+
+					case ${command} in
+						("${COMMANDS_ADD}"|"${COMMANDS_REMOVE}")
+							if [ "${subcommand}" = "${SUBCOMMANDS_GEM}" ] && [ -z "${first_argument}" ]; then
+								case ${arg} in
+									('-'*)
+										was_option_name='true'
+										was_option_value='false'
+										;;
+
+									(*)
+										if [ "${was_option_name}" = 'false' ] || [ "${was_option_value}" = 'true' ]; then
+											first_argument="${arg}"
+											continue
+										else
+											was_option_value='true'
+										fi
+										;;
+								esac
+							fi
+							;;
+					esac
+
+					case ${arg} in
+						("-${SHORT_OPTION_PROJECT}"|"--${LONG_OPTION_PROJECT}"|"--${LONG_OPTION_PATH}")
+							project_option="${arg}"
+							;;
+
+						(*)
+							new_args="${new_args} ${arg}"
+							;;
+					esac
+				done
+
+				if [ -z "${project_option}" ]; then
+					project_dir='.'
+
+					case ${command} in
+						("${COMMANDS_INIT}"|"${COMMANDS_INSTALL}")
+							project_option="--${LONG_OPTION_PATH}"
+							;;
+
+						(*)
+							project_option="--${LONG_OPTION_PROJECT}"
+							;;
+					esac
 				fi
 
-				case ${command} in
-					("${COMMANDS_ADD}"|"${COMMANDS_REMOVE}")
-						if [ "${subcommand}" = "${SUBCOMMANDS_GEM}" ] && [ -z "${first_argument}" ]; then
-							case ${arg} in
-								('-'*)
-									was_option_name='true'
-									was_option_value='false'
-									;;
+				project_dir=$(to_absolute_path "${project_dir}" 'true')
+				if ! [ -d "${project_dir}" ]; then
+					throw_error "${MESSAGES_INVALID_DIRECTORY}" "${project_dir}"
+				fi
 
-								(*)
-									if [ "${was_option_name}" = 'false' ] || [ "${was_option_value}" = 'true' ]; then
-										first_argument="${arg}"
-										continue
-									else
-										was_option_value='true'
+				if [ -n "${first_argument}" ]; then
+					case ${command} in
+						("${COMMANDS_ADD}"|"${COMMANDS_REMOVE}")
+							if [ "${subcommand}" = "${SUBCOMMANDS_GEM}" ]; then
+								local external_gem_dir="${first_argument}"
+								if [ -d "${external_gem_dir}" ]; then
+									if [ -f "${external_gem_dir}/gem.json" ] || [ -f "${external_gem_dir}/repo.json" ]; then
+										first_argument=$(to_absolute_path "${external_gem_dir}" 'true')
 									fi
-									;;
-							esac
-						fi
-						;;
-				esac
-
-				case ${arg} in
-					("-${SHORT_OPTION_PROJECT}"|"--${LONG_OPTION_PROJECT}"|"--${LONG_OPTION_PATH}")
-						project_option="${arg}"
-						;;
-
-					(*)
-						new_args="${new_args} ${arg}"
-						;;
-				esac
-			done
-
-			if [ -z "${project_option}" ]; then
-				project_dir='.'
-
-				case ${command} in
-					("${COMMANDS_INIT}")
-						project_option="--${LONG_OPTION_PATH}"
-						;;
-
-					(*)
-						project_option="--${LONG_OPTION_PROJECT}"
-						;;
-				esac
-			fi
-
-			project_dir=$(to_absolute_path "${project_dir}" 'true')
-			if ! [ -d "${project_dir}" ]; then
-				throw_error "${MESSAGES_INVALID_DIRECTORY}" "${project_dir}"
-			fi
-
-			if [ -n "${first_argument}" ]; then
-				case ${command} in
-					("${COMMANDS_ADD}"|"${COMMANDS_REMOVE}")
-						if [ "${subcommand}" = "${SUBCOMMANDS_GEM}" ]; then
-							local external_gem_dir="${first_argument}"
-							if [ -d "${external_gem_dir}" ]; then
-								if [ -f "${external_gem_dir}/gem.json" ] || [ -f "${external_gem_dir}/repo.json" ]; then
-									first_argument=$(to_absolute_path "${external_gem_dir}" 'true')
 								fi
 							fi
-						fi
-						;;
-				esac
+							;;
+					esac
 
-				new_args="${first_argument} ${new_args}"
+					new_args="${first_argument} ${new_args}"
+				fi
+
+				set -- ${command} ${subcommand} "${project_option}" "${project_dir}" ${new_args}
+
+				project_mount="--mount type=bind,source=${project_dir},destination=${O3DE_PROJECT_DIR}"
 			fi
-
-			set -- ${command} ${subcommand} "${project_option}" "${project_dir}" ${new_args}
-
-			project_mount="--mount type=bind,source=${project_dir},destination=${O3DE_PROJECT_DIR}"
 			;;	
 
 		(*)

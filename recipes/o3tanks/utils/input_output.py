@@ -92,6 +92,7 @@ class Messages(AutoEnum):
 	INSTALL_EXTERNAL_SYSTEM_PACKAGES_1 = enum.auto()
 	INSTALL_EXTERNAL_SYSTEM_PACKAGES_2 = enum.auto()
 	INSTALL_OTHER_COMMANDS = enum.auto()
+	INSTALL_PROJECT_COMPLETED = enum.auto()
 	INVALID_ANSWER = enum.auto()
 	INVALID_ARCHIVE_TYPE = enum.auto()
 	INVALID_BINARY = enum.auto()
@@ -424,6 +425,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "- Install these additional packages from the previous repositories:"
 	elif message_id == Messages.INSTALL_OTHER_COMMANDS:
 		message_text = "- Execute these additional commands:"
+	elif message_id == Messages.INSTALL_PROJECT_COMPLETED:
+		message_text = "Operation completed! The project is now ready to be used at: {}"
 	elif message_id == Messages.INSTALL_QUESTION:
 		message_text = "Do you want to install"
 	elif message_id == Messages.INVALID_ANSWER:
