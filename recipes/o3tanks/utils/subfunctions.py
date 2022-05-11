@@ -154,6 +154,13 @@ def is_commit(reference):
 	return (re.match(r"^[a-z0-9]{40}$", reference) is not None)
 
 
+def is_engine_release_number(value):
+	if value is None:
+		return False
+
+	return re.match(r"^[2-9][0-9][0-1][0-9]\.[1-9][0-9]?$", value)
+
+
 def is_engine_version(value):
 	return is_image_name(value)
 

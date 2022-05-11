@@ -183,6 +183,8 @@ def main():
 		repository_dir = O3DE_ENGINE_SOURCE_DIR
 	elif target is Targets.GEM:
 		repository_dir = O3DE_GEMS_DIR
+	elif target is Targets.PROJECT:
+		repository_dir = O3DE_PROJECT_SOURCE_DIR
 	else:
 		throw_error(Messages.INVALID_TARGET, target)
 

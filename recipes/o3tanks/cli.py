@@ -1058,11 +1058,20 @@ def run_updater(engine_version, command, target, *arguments):
 	if target is Targets.ENGINE:
 		source_volume = CONTAINER_CLIENT.get_volume_name(Volumes.SOURCE, engine_version)
 		volumes[source_volume] = str(O3DE_ENGINE_SOURCE_DIR)
+
 	elif target is Targets.GEM:
 		gems_volume = CONTAINER_CLIENT.get_volume_name(Volumes.GEMS)
 		volumes[gems_volume] = str(O3DE_GEMS_DIR)
+
+	elif target is Targets.PROJECT:
+		project_dir = arguments[0]
+		arguments = arguments[1:]
+
+		binds[str(project_dir)] = str(O3DE_PROJECT_SOURCE_DIR)
+
 	elif target is Targets.SELF:
 		binds[str(get_real_bin_file().parent)] = str(O3DE_ENGINE_SOURCE_DIR)
+
 	else:
 		throw_error(Messages.INVALID_TARGET, target)
 
@@ -2083,6 +2092,72 @@ def export_project(project_dir, binary, config, variant, output_type, output_nam
 		print_msg(Level.INFO, Messages.EXPORT_ARCHIVE_COMPLETED, real_archive_file)
 
 
+def install_project(repository, project_dir, config, variant):
+	if repository is not None:
+		repository_protocol, repository_url, repository_reference = parse_repository_url(repository)
+
+	resume_command = [
+		get_bin_name(),
+		CliCommands.INSTALL.value,
+		CliSubCommands.PROJECT.value
+	]
+
+	if repository is not None:
+		resume_command.append(repository_url)
+
+		if repository_reference is not None:
+			if is_commit(repository_reference):
+				resume_command.append(print_option(LongOptions.COMMIT, repository_reference))
+			else:
+				resume_command.append(print_option(LongOptions.BRANCH, repository_reference))
+
+	resume_command = ' '.join(resume_command)
+
+	if CONTAINER_CLIENT.is_in_container:
+		mapping = { str(project_dir): get_real_project_dir() }
+		real_project_dir = get_real_project_dir()
+	else:
+		mapping = None
+		real_project_dir = project_dir
+
+	check_ownership(project_dir, Messages.CHANGE_OWNERSHIP_PROJECT, resume_command, mapping)
+
+	if repository is not None:
+		downloaded = run_updater(None, UpdaterCommands.INIT, Targets.PROJECT, real_project_dir, repository_url, repository_reference)
+		if not downloaded:
+			throw_error(Messages.UNCOMPLETED_INSTALL)
+
+		if is_engine_release_number(repository_reference):
+			engine_version = get_engine_version_from_project(project_dir)
+			if engine_version is None:
+				run_builder(engine_version, None, project_dir, None, BuilderCommands.SETTINGS, Targets.PROJECT, Settings.ENGINE.value, None, EngineSettings.REPOSITORY.value.name, O3DE_REPOSITORY_URL, False, False, False)
+				run_builder(engine_version, None, project_dir, None, BuilderCommands.SETTINGS, Targets.PROJECT, Settings.ENGINE.value, None, EngineSettings.BRANCH.value.name, repository_reference, False, False, False)
+
+		if (project_dir / ".lfsconfig").is_file():
+			resume_command = [
+				get_bin_name(),
+				CliCommands.INSTALL.value,
+				CliSubCommands.PROJECT.value
+			]
+
+			print_msg(Level.INFO, Messages.RUN_EXTERNAL_COMMANDS, "(or use your preferred GIT client)")
+			print_msg(Level.INFO, "cd {}".format(real_project_dir))
+			print_msg(Level.INFO, "git lfs install")
+			print_msg(Level.INFO, "git lfs pull")
+			print_msg(Level.INFO, '')
+			print_msg(Level.INFO, Messages.RUN_RESUME_COMMAND)
+			print_msg(Level.INFO, ' '.join(resume_command))
+
+			exit(0)
+
+	if not is_project(project_dir):
+		throw_error(Messages.PROJECT_NOT_FOUND, real_project_dir)
+
+	check_project_dependencies(project_dir, config, variant)
+
+	print_msg(Level.INFO, Messages.INSTALL_PROJECT_COMPLETED, real_project_dir)
+
+
 def manage_project_settings(project_dir, setting_key_section , setting_key_index, setting_key_name, setting_value, clear):
 	run_builder(None, None, project_dir, None, BuilderCommands.SETTINGS, Targets.PROJECT, setting_key_section, setting_key_index, setting_key_name, setting_value, clear, False, True)
 
@@ -2700,6 +2775,40 @@ def handle_init_project_command(engine_version, project_path, alias, is_minimal_
 		close_container_client()
 
 
+def handle_install_project_command(project_path, config_name, variant_name, repository, branch, tag, commit, **kwargs):
+	repository_url = generate_repository_url(repository, None, branch, tag, commit) if repository is not None else None
+
+	project_dir = parse_project_path(project_path)
+	if not project_dir.is_dir():
+		throw_error(Messages.INVALID_DIRECTORY, project_path)
+	else:
+		if repository is not None:
+			if not is_directory_empty(project_dir):
+				throw_error(Messages.PROJECT_DIR_NOT_EMPTY, project_path)
+		else:
+			if not is_project(project_dir):
+				throw_error(Messages.PROJECT_NOT_FOUND, project_path)
+
+	config = O3DE_Configs.from_value(config_name)
+	if config is None:
+		throw_error(Messages.INVALID_CONFIG, config_name)
+
+	variant = O3DE_Variants.from_value(variant_name)
+	if variant is None:
+		throw_error(Messages.INVALID_VARIANT, variant_name)
+
+	try:
+		check_container_client()
+		check_updater()
+		if tag is not None:
+			check_builder()
+
+		install_project(repository_url, project_dir, config, variant)
+
+	finally:
+		close_container_client()
+
+
 def handle_open_editor_command(project_path, engine_config_name, new_engine_version):
 	if engine_config_name is not None:
 		engine_config = O3DE_Configs.from_value(engine_config_name)
@@ -2856,6 +2965,10 @@ def main():
 	DESCRIPTIONS_INSTALL_ENGINE_WORKFLOW_PROJECT = "Build the engine in each project (alias for: {})".format(print_option(LongOptions.WORKFLOW, O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SOURCE.value))
 	DESCRIPTIONS_INSTALL_ENGINE_WORKFLOW_SDK = "Build the engine once and link it in each project (alias for: {})".format(print_option(LongOptions.WORKFLOW, O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK.value))
 	DESCRIPTIONS_INSTALL_GEM = "Download a new gem version"
+	DESCRIPTIONS_INSTALL_PROJECT = "Download an existing project and install all its dependencies"
+	DESCRIPTIONS_INSTALL_PROJECT_CONFIG = DESCRIPTIONS_COMMON_CONFIG
+	DESCRIPTIONS_INSTALL_PROJECT_PATH = DESCRIPTIONS_COMMON_PROJECT
+	DESCRIPTIONS_INSTALL_PROJECT_VARIANT = DESCRIPTIONS_COMMON_VARIANT
 	DESCRIPTIONS_INSTALL_VERSION = "Name for the new installation"
 
 	DESCRIPTIONS_LIST = "List all installed engines and gems"
@@ -3001,12 +3114,13 @@ def main():
 	install_common_parser.add_argument(print_option(ShortOptions.FORCE), print_option(LongOptions.FORCE), action = "store_true", help = DESCRIPTIONS_INSTALL_FORCE)
 	install_subparsers = install_parser.add_subparsers()
 
-	install_revision_group = install_common_parser.add_mutually_exclusive_group()
+	install_revision_parser = argparse.ArgumentParser(add_help = False)
+	install_revision_group = install_revision_parser.add_mutually_exclusive_group()
 	install_revision_group.add_argument(print_option(LongOptions.BRANCH), metavar = "<string>", help = DESCRIPTIONS_INSTALL_REPOSITORY_BRANCH)
 	install_revision_group.add_argument(print_option(LongOptions.COMMIT), metavar = "<hash>", help = DESCRIPTIONS_INSTALL_REPOSITORY_COMMIT)
 	install_revision_group.add_argument(print_option(LongOptions.TAG), metavar = "<string>", help = DESCRIPTIONS_INSTALL_REPOSITORY_TAG)
 
-	install_engine_parser = install_subparsers.add_parser(CliSubCommands.ENGINE.value, parents = [ global_parser, install_common_parser ], help = DESCRIPTIONS_INSTALL_ENGINE)
+	install_engine_parser = install_subparsers.add_parser(CliSubCommands.ENGINE.value, parents = [ global_parser, install_common_parser, install_revision_parser ], help = DESCRIPTIONS_INSTALL_ENGINE)
 	install_engine_parser.set_defaults(handler = handle_install_engine_command)
 	install_engine_parser.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "engine_config_name", default = O3DE_DEFAULT_CONFIG.value, metavar = "<config>", help = DESCRIPTIONS_INSTALL_ENGINE_CONFIG)
 	install_engine_parser.add_argument(print_option(LongOptions.VARIANT), dest = "engine_variant_name", default = O3DE_DEFAULT_VARIANT.value, metavar = "<variant>", help = DESCRIPTIONS_INSTALL_ENGINE_VARIANT)
@@ -3023,9 +3137,16 @@ def main():
 	install_url_group.add_argument(print_option(LongOptions.FORK), metavar = "<username>/<project>", help = DESCRIPTIONS_INSTALL_REPOSITORY_FORK)
 	install_url_group.add_argument(print_option(LongOptions.REPOSITORY), metavar = "<url>", help = DESCRIPTIONS_INSTALL_REPOSITORY)
 
-	install_gem_parser = install_subparsers.add_parser(CliSubCommands.GEM.value, parents = [ global_parser, install_common_parser ], help = DESCRIPTIONS_INSTALL_GEM)
+	install_gem_parser = install_subparsers.add_parser(CliSubCommands.GEM.value, parents = [ global_parser, install_common_parser, install_revision_parser ], help = DESCRIPTIONS_INSTALL_GEM)
 	install_gem_parser.set_defaults(handler = handle_install_gem_command)
 	install_gem_parser.add_argument("repository", metavar="<url>", help = DESCRIPTIONS_INSTALL_REPOSITORY)
+
+	install_project_parser = install_subparsers.add_parser(CliSubCommands.PROJECT.value, parents = [ global_parser, install_revision_parser ], help = DESCRIPTIONS_INSTALL_PROJECT)
+	install_project_parser.set_defaults(handler = handle_install_project_command)
+	install_project_parser.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "config_name", default = O3DE_DEFAULT_CONFIG.value, metavar = "<config>", help = DESCRIPTIONS_INSTALL_PROJECT_CONFIG)
+	install_project_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PATH), dest = "project_path", metavar = "<path>", help = DESCRIPTIONS_INSTALL_PROJECT_PATH)
+	install_project_parser.add_argument(print_option(LongOptions.VARIANT), dest = "variant_name", default = O3DE_DEFAULT_VARIANT.value, metavar = "<variant>", help = DESCRIPTIONS_INSTALL_PROJECT_VARIANT)
+	install_project_parser.add_argument("repository", nargs = "?", default = None, metavar="<url>", help = DESCRIPTIONS_INSTALL_REPOSITORY)
 
 	list_parser = subparsers.add_parser(CliCommands.LIST.value, parents = [ global_parser ], help = DESCRIPTIONS_LIST)
 	list_parser.set_defaults(handler = handle_list_command)
@@ -3245,6 +3366,8 @@ def main():
 				help_parser = install_engine_parser
 			elif help_subcommand == CliSubCommands.GEM.value:
 				help_parser = install_gem_parser
+			elif help_subcommand == CliSubCommands.PROJECT.value:
+				help_parser = install_project_parser
 			else:
 				throw_error(Messages.INVALID_SUBCOMMAND, help_command, help_subcommand)
 		elif help_command == CliCommands.LIST.value:
