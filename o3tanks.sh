@@ -608,6 +608,7 @@ init_globals()
 	readonly COMMANDS_ADD='add'
 	readonly COMMANDS_BUILD='build'
 	readonly COMMANDS_CLEAN='clean'
+	readonly COMMANDS_EXPORT='export'
 	readonly COMMANDS_INIT='init'
 	readonly COMMANDS_OPEN='open'
 	readonly COMMANDS_REMOVE='remove'
@@ -784,7 +785,7 @@ run_cli()
 {
 	local has_gui
 	case ${1:-} in
-		("${COMMANDS_BUILD}")
+		("${COMMANDS_BUILD}"|"${COMMANDS_EXPORT}")
 			if [ "${2:-}" = "${SUBCOMMANDS_ASSETS}" ]; then
 				has_gui='true'
 			else
@@ -924,11 +925,11 @@ run_cli()
 
 	local project_mount
 	case ${1:-} in
-		("${COMMANDS_ADD}"|"${COMMANDS_BUILD}"|"${COMMANDS_CLEAN}"|"${COMMANDS_INIT}"|"${COMMANDS_OPEN}"|"${COMMANDS_REMOVE}"|"${COMMANDS_RUN}"|"${COMMANDS_SETTINGS}")
+		("${COMMANDS_ADD}"|"${COMMANDS_BUILD}"|"${COMMANDS_CLEAN}"|"${COMMANDS_EXPORT}"|"${COMMANDS_INIT}"|"${COMMANDS_OPEN}"|"${COMMANDS_REMOVE}"|"${COMMANDS_RUN}"|"${COMMANDS_SETTINGS}")
 			local command
 			local subcommand
 			case ${1:-} in
-				("${COMMANDS_ADD}"|"${COMMANDS_BUILD}"|"${COMMANDS_INIT}"|"${COMMANDS_OPEN}"|"${COMMANDS_REMOVE}"|"${COMMANDS_RUN}")
+				("${COMMANDS_ADD}"|"${COMMANDS_BUILD}"|"${COMMANDS_EXPORT}"|"${COMMANDS_INIT}"|"${COMMANDS_OPEN}"|"${COMMANDS_REMOVE}"|"${COMMANDS_RUN}")
 					command="${1}"
 					subcommand="${2:-}"
 					if [ -n "${subcommand}" ]; then

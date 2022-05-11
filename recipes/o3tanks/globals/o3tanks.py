@@ -22,6 +22,12 @@ import typing
 
 # --- TYPES ---
 
+class ArchiveTypes(ObjectEnum):
+	CONTAINER = "container"
+	TAR_GZ = "tar.gz"
+	ZIP = "zip"
+
+
 class BuilderCommands(ObjectEnum):
 	BUILD = "build"
 	CLEAN = "clean"
@@ -39,6 +45,7 @@ class CliCommands(ObjectEnum):
 	ADD = "add"
 	BUILD = BuilderCommands.BUILD.value
 	CLEAN = BuilderCommands.CLEAN.value
+	EXPORT = "export"
 	INIT = BuilderCommands.INIT.value
 	OPEN = "open"
 	REMOVE = "remove"
@@ -110,6 +117,7 @@ class LongOptions(ObjectEnum):
 	ALIAS = "as"
 	BRANCH = "branch"
 	BUILD = "build"
+	BUNDLE = "bundle"
 	CACHE = "cache"
 	CLEAR = "clear"
 	CONSOLE_COMMAND = "console-command"
@@ -129,7 +137,8 @@ class LongOptions(ObjectEnum):
 	PROJECT = "project"
 	QUIET = "quiet"
 	SKIP_EXAMPLES = "no-project"
-	SKIP_REBUILD = "no-rebuild"
+	SKIP_BUILD = "no-build"
+	SKIP_PROCESS = "no-process"
 	REMOVE_BUILD = "remove-build"
 	REMOVE_INSTALL = "remove-install"
 	REPOSITORY = "repository"
@@ -153,6 +162,7 @@ class ShortOptions(ObjectEnum):
 	HELP = 'h'
 	LEVEL = 'l'
 	PROJECT = 'p'
+	TYPE = 't'
 	QUIET = 'q'
 	VERBOSE = 'v'
 	WORKFLOW = 'w'

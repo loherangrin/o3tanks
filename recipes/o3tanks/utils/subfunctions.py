@@ -155,7 +155,7 @@ def is_commit(reference):
 
 
 def is_engine_version(value):
-	return re.match(r"^[\w\.\-]+$", value)
+	return is_image_name(value)
 
 
 def is_gem(path):
@@ -167,6 +167,10 @@ def is_gem(path):
 
 def is_gem_version(value):
 	return is_engine_version(value)
+
+
+def is_image_name(value):
+	return re.match(r"^[a-z0-9\.\-_]+$", value)
 
 
 def is_project(path):

@@ -15,7 +15,7 @@
 
 from ..utils.filesystem import is_directory_empty
 from ..utils.subfunctions import get_builds_root_path, get_script_filename, has_configuration
-from ..utils.types import ObjectEnum
+from ..utils.types import OSFamilies, ObjectEnum
 from .o3tanks import OPERATING_SYSTEM, RUN_CONTAINERS, USER_NAME, init_from_env
 import pathlib
 
@@ -35,6 +35,7 @@ class O3DE_ConsoleVariables(ObjectEnum):
 
 
 class O3DE_EngineBinaries(ObjectEnum):
+	ASSET_BUNDLER = "asset-bundler"
 	ASSET_PROCESSOR = "asset-processor"
 	EDITOR = "editor"
 
@@ -47,6 +48,12 @@ class O3DE_GemTemplates(ObjectEnum):
 class O3DE_GemTypes(ObjectEnum):
 	ASSETS_ONLY = "asset"
 	CODE_AND_ASSETS = "code"
+
+
+class O3DE_Platforms(ObjectEnum):
+	LINUX = "linux"
+	MAC = "mac"
+	WINDOWS = "pc"
 
 
 class O3DE_ProjectBinaries(ObjectEnum):
@@ -109,6 +116,17 @@ def get_build_workflow(source_dir, build_dir, install_dir):
 			break
 
 	return build_workflow
+
+
+def get_platform(operating_system = OPERATING_SYSTEM):
+	if operating_system.family is OSFamilies.LINUX:
+		return O3DE_Platforms.LINUX
+	elif operating_system.family is OSFamilies.MAC:
+		return O3DE_Platforms.MAC
+	elif operating_system.family is OSFamilies.WINDOWS:
+		return O3DE_Platforms.WINDOWS
+	else:
+		return None
 
 
 def has_build_config(build_dir, config):

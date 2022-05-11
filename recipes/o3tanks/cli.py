@@ -25,8 +25,10 @@ import argparse
 import os
 import re
 import sys
+import tarfile
 import textwrap
 import time
+import zipfile
 
 
 # --- VARIABLES ---
@@ -35,6 +37,31 @@ CONTAINER_CLIENT = None
 
 
 # --- SUB-FUNCTIONS ---
+
+def add_to_archive(archive_handle, archive_type, from_path, from_is_dir, to_base_dir, to_path = None):
+	to = to_base_dir / to_path if to_path is not None else to_base_dir
+	
+	if archive_type is ArchiveTypes.CONTAINER:
+		executed = CONTAINER_CLIENT.exec_in_container(archive_handle, [ "mkdir", "--parents", to ])
+		if not executed:
+			return False
+
+		copied = CONTAINER_CLIENT.copy_to_container(archive_handle, from_path, to, content_only = from_is_dir)
+		return copied
+
+	elif archive_type is ArchiveTypes.TAR_GZ:
+		to /= from_path.name
+		archive_handle.add(from_path, arcname = to)
+		return True
+
+	elif archive_type is ArchiveTypes.ZIP:
+		to /= from_path.name
+		archive_handle.write(from_path, arcname = to)
+		return True
+
+	else:
+		throw_error(Messages.INVALID_ARCHIVE_TYPE, archive_type.value)
+
 
 def check_asset_processor(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs, wait = False):
 	asset_processor_lock_file = project_dir / ASSET_PROCESSOR_LOCK_PATH
@@ -51,7 +78,7 @@ def check_asset_processor(engine_version, engine_config, engine_workflow, projec
 		overwrite_missing_asset_processor = False
 
 	if asset_processor_container is None:
-		asset_processor_container = run_runner(engine_version, engine_config, O3DE_Variants.NON_MONOLITHIC, engine_workflow, project_dir, external_gem_dirs, wait, RunnerCommands.OPEN, O3DE_EngineBinaries.ASSET_PROCESSOR, engine_config, overwrite_missing_asset_processor)
+		asset_processor_container = run_runner(engine_version, engine_config, O3DE_Variants.NON_MONOLITHIC, engine_workflow, project_dir, external_gem_dirs, False, wait, RunnerCommands.OPEN, O3DE_EngineBinaries.ASSET_PROCESSOR, engine_config, overwrite_missing_asset_processor)
 		time.sleep(5)
 
 	return asset_processor_container
@@ -183,6 +210,50 @@ def check_project_dependencies(project_dir, config = None, variant = None, check
 					throw_error(Messages.INVALID_GEM_SETTING, gem_index)
 
 	return [ engine_version, was_config_missing, engine_workflow, external_gem_dirs ]
+
+
+def copy_project_to_archive(bin_dir, cache_dir, bundle_files, binary_name, platform, variant, archive_handle, archive_type, archive_base_dir):
+	library_suffix = get_library_filename("")
+
+	for content in bin_dir.iterdir():
+		if not content.is_file():
+			continue
+
+		if content.name != binary_name and content.suffix != library_suffix:
+			continue
+
+		if content.is_symlink():
+			copied = add_to_archive(archive_handle, archive_type, content, False, archive_base_dir)
+			if not copied:
+				return False
+			
+			bin_file = content.resolve()
+		else:
+			bin_file = content
+
+		copied = add_to_archive(archive_handle, archive_type, bin_file, False, archive_base_dir)
+		if not copied:
+			return False
+
+	archive_cache_path = pathlib.Path("Cache") / platform.value
+
+	if len(bundle_files) > 0:
+		for bundle_file in bundle_files:
+			copied = add_to_archive(archive_handle, archive_type, bundle_file, False, archive_base_dir, archive_cache_path)
+			if not copied:
+				return False
+
+	else:
+		copied = add_to_archive(archive_handle, archive_type, cache_dir, True, archive_base_dir, archive_cache_path)
+		if not copied:
+			return False
+
+	if variant is O3DE_Variants.NON_MONOLITHIC:
+		copied = add_to_archive(archive_handle, archive_type, bin_dir / "Registry", True, archive_base_dir, archive_cache_path / "registry")
+		if not copied:
+			return False
+
+	return True
 
 
 def generate_repository_url(repository, fork, branch, tag, commit, default_repository = None):
@@ -901,7 +972,7 @@ def run_builder(engine_version, engine_config, project_dir, external_gem_dirs, *
 	return completed
 
 
-def run_runner(engine_version, engine_config, engine_variant, engine_workflow, project_dir, external_gem_dirs, wait, *command):
+def run_runner(engine_version, engine_config, engine_variant, engine_workflow, project_dir, external_gem_dirs, force_headless, wait, *command):
 	if engine_config is None:
 		throw_error(Messages.MISSING_CONFIG)
 
@@ -967,7 +1038,7 @@ def run_runner(engine_version, engine_config, engine_variant, engine_workflow, p
 		runner_image,
 		list(command),
 		interactive = is_tty() if wait else False,
-		display = True,
+		display = not force_headless,
 		gpu = True,
 		binds = binds,
 		volumes = volumes,
@@ -1073,7 +1144,7 @@ def apply_engine_updates(engine_version, rebuild):
 		print_msg(Level.INFO, Messages.UPGRADE_ENGINE_COMPLETED_SOURCE_ONLY)
 
 	elif not rebuild:
-		print_msg(Level.INFO, Messages.SKIP_REBUILD)
+		print_msg(Level.INFO, Messages.UPGRADE_ENGINE_COMPLETED_SKIP_REBUILD)
 
 	result_type, engine_repository = get_repository_from_source(source_dir)
 	if result_type is not RepositoryResultType.OK:
@@ -1772,6 +1843,246 @@ def clean_project(project_dir, config, variant, remove_build, remove_cache, forc
 	run_builder(engine_version, config, project_dir, external_gem_dirs, BuilderCommands.CLEAN, Targets.PROJECT, config, variant, remove_build, remove_cache, force)
 
 
+def export_project(project_dir, binary, config, variant, output_type, output_name = None, level_names = None, bundle_names = None, build_source = True, process_assets = True):
+	engine_version, was_config_missing, engine_workflow, external_gem_dirs = check_project_dependencies(project_dir, config, variant)
+
+	project_name = read_json_property(project_dir / "project.json", JsonPropertyKey(None, None, "project_name"))
+	if project_name is None:
+		throw_error(Messages.INVALID_PROJECT_NAME)
+
+	build_dir = get_build_path(get_builds_root_path(project_dir), variant)
+	bin_dir = get_build_bin_path(build_dir, config)
+
+	if binary is O3DE_ProjectBinaries.CLIENT:
+		binary_suffix = "GameLauncher"
+	elif binary is O3DE_ProjectBinaries.SERVER:
+		binary_suffix = "ServerLauncher"
+	else:
+		throw_error(Messages.INVALID_BINARY, binary.value)
+
+	binary_name = get_binary_filename("{}.{}".format(project_name, binary_suffix))
+
+	if build_source:
+		print_msg(Level.INFO, Messages.START_EXPORT_BUILD_BINARY, config.value, variant.value)
+
+		built = run_builder(engine_version, config, project_dir, external_gem_dirs, BuilderCommands.BUILD, Targets.PROJECT, config, variant, None, was_config_missing)
+		if not built:
+			throw_error(Messages.UNCOMPLETED_EXPORT)
+	else:
+		if not (bin_dir / binary_name).is_file():
+			throw_error(Messages.EXPORT_MISSING_BINARY, config.value, variant.value)
+
+		print_msg(Level.INFO, Messages.EXPORT_SKIP_BUILD_SOURCE)
+
+	engine_config = O3DE_Configs.PROFILE
+	engine_variant = O3DE_Variants.NON_MONOLITHIC
+
+	platform = get_platform()
+	if platform is None:
+		throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM.family)
+
+	cache_dir = project_dir / "Cache" / platform.value
+	use_bundles = config is O3DE_Configs.RELEASE
+
+	bundles_dir = project_dir / "AssetBundling" / "Bundles"
+	if bundle_names is not None and len(bundle_names) > 0:
+		if not use_bundles:
+			throw_error(Messages.EXPORT_INVALID_CONFIG_AND_BUNDLE, config.value)
+
+		bundle_files = []
+		for bundle_name in bundle_names:
+			if not bundle_name.endswith(".pak"):
+				bundle_name = "{}.pak".format(bundle_name)
+
+			bundle_file = bundles_dir / bundle_name
+			if not bundle_file.is_file():
+				throw_error(Messages.MISSING_BUNDLE, bundle_name)
+
+			bundle_files.append(bundle_file)
+
+		print_msg(Level.INFO, Messages.EXPORT_SKIP_PACK_BUNDLES, ", ".join(bundle_names))
+
+	else:
+		if process_assets:
+			print_msg(Level.INFO, Messages.START_EXPORT_PROCESS_ASSETS)
+
+			processed = run_runner(engine_version, engine_config, engine_variant, engine_workflow, project_dir, external_gem_dirs, True, True, RunnerCommands.OPEN, O3DE_EngineBinaries.ASSET_PROCESSOR, engine_config)
+			if not processed:
+				throw_error(Messages.UNCOMPLETED_EXPORT)
+		else:
+			if not cache_dir.is_dir() or is_directory_empty(cache_dir):
+				throw_error(Messages.EXPORT_MISSING_ASSETS)
+
+			print_msg(Level.INFO, Messages.EXPORT_SKIP_PROCESS_ASSETS)
+
+		if not use_bundles:
+			bundle_files = []
+		else:
+			seedlists_dir = project_dir / "AssetBundling" / "SeedLists"
+			game_seedlist_file = seedlists_dir / "GameSeedList.seed"
+
+			assetlists_dir = project_dir / "AssetBundling" / "AssetLists"
+			game_assetlist_file = assetlists_dir / "game_{}.assetlist".format(platform.value)
+			engine_assetlist_file = assetlists_dir / "engine_{}.assetlist".format(platform.value)
+
+			game_bundle_name = "game_{}.pak".format(platform.value)
+			game_bundle_file = bundles_dir / game_bundle_name
+		
+			engine_bundle_name = "engine_{}.pak".format(platform.value)
+			engine_bundle_file = bundles_dir / engine_bundle_name
+
+			print_msg(Level.INFO, Messages.START_EXPORT_PACK_ASSETS_TO_BUNDLES, "{}, {}".format(game_bundle_name, engine_bundle_name))
+
+			bundler_commands = [
+				[
+					"seeds",
+					"--seedListFile", str(game_seedlist_file),
+					"--platform", platform.value
+				],
+				[
+					"assetLists",
+					"--assetListFile", str(game_assetlist_file),
+					"--seedListFile", str(game_seedlist_file),
+					"--platform", platform.value,
+					"--allowOverwrites"
+				],
+				[
+					"assetLists",
+					"--assetListFile", str(engine_assetlist_file),
+					"--platform", platform.value,
+					"--addDefaultSeedListFiles",
+					"--allowOverwrites"
+				],
+				[
+					"bundles",
+					"--assetListFile", str(game_assetlist_file),
+					"--outputBundlePath", str(game_bundle_file),
+					"--platform", platform.value,
+					"--allowOverwrites"
+				],
+				[
+					"bundles",
+					"--assetListFile", str(engine_assetlist_file),
+					"--outputBundlePath", str(engine_bundle_file),
+					"--platform", platform.value,
+					"--allowOverwrites"
+				]
+			]
+
+			levels_dir = project_dir / "Cache" / platform.value / "levels"
+			if level_names is not None:
+				for level_name in level_names:
+					level_name = level_name.lower()
+
+					level_file = levels_dir / level_name / "{}.spawnable".format(level_name)
+					if not level_file.is_dir():
+						throw_error(Messages.MISSING_LEVEL, str(level_file))
+
+			else:
+				level_names = []
+
+				for content in levels_dir.iterdir():
+					if content.is_dir():
+						for subcontent in content.iterdir():
+							if subcontent.is_file() and subcontent.suffix == ".spawnable":
+								level_names.append(content.name)
+								break
+
+			for level_name in level_names:
+				bundler_commands[0].append("--addSeed")
+				bundler_commands[0].append("levels/{0}/{0}.spawnable".format(level_name))
+
+			for bundler_command in bundler_commands:
+				executed = run_runner(engine_version, engine_config, engine_variant, engine_workflow, project_dir, external_gem_dirs, True, True, RunnerCommands.OPEN, O3DE_EngineBinaries.ASSET_BUNDLER, engine_config, False, bundler_command)
+				if not executed:
+					throw_error(Messages.UNCOMPLETED_EXPORT)
+
+			bundle_files = [
+				game_bundle_file,
+				engine_bundle_file
+			]
+
+	output_root_dir = project_dir / "install"
+	if not output_root_dir.exists():
+		output_root_dir.mkdir(parents = True)
+
+	if output_type is ArchiveTypes.CONTAINER:
+		from_image = CONTAINER_CLIENT.get_image_name(Images.RUNNER)
+
+		new_image_name = "{}-{}".format(project_name.lower(), "server" if binary is O3DE_ProjectBinaries.SERVER else "client") if output_name is None else output_name
+		if not is_image_name(new_image_name):
+			throw_error(Messages.INVALID_PROJECT_NAME_FOR_IMAGES, project_name)
+
+		print_msg(Level.INFO, Messages.START_EXPORT_SAVE_IMAGE, new_image_name)
+
+		new_container = None
+		try:
+			new_container = CONTAINER_CLIENT.run_container(ContainerRunMode.STANDBY, from_image, network_disabled = True)
+
+			output_base_dir = O3DE_PROJECT_SOURCE_DIR
+			copied = copy_project_to_archive(bin_dir, cache_dir, bundle_files, binary_name, platform, variant, new_container, output_type, output_base_dir)
+			if not copied:
+				throw_error(Messages.ERROR_SAVE_IMAGE, new_image_name)
+
+			autoexec_name = "server.cfg" if binary is O3DE_ProjectBinaries.SERVER else "client.cfg"
+			autoexec_file = cache_dir / autoexec_name
+
+			new_image = new_container.commit(
+				tag = new_image_name,
+				changes = [
+					"WORKDIR \"{}\"".format(output_base_dir),
+					"ENTRYPOINT [ \"./{}\", \"-bg_ConnectToAssetProcessor=0\"{} ]".format(
+						binary_name,
+						 ", \"--rhi=null\", \"-NullRenderer\"" if binary is O3DE_ProjectBinaries.SERVER else ""
+					),
+					"CMD [ {} ]".format(
+						"\"--console-command-file={}\"".format(autoexec_name) if autoexec_file.is_file() else ""
+					)
+				]
+			)
+
+			if new_image is None:
+				throw_error(Messages.ERROR_SAVE_IMAGE, new_image_name)
+			elif (new_image is not None) and (len(new_image.tags) == 0) and (len(new_image.id) > 0):
+				new_image.tag(new_image_name)
+			print_msg(Level.INFO, Messages.EXPORT_IMAGE_COMPLETED, new_image_name)
+
+		except docker.errors.ContainerError:
+			throw_error(Messages.ERROR_SAVE_IMAGE, new_image_name)
+
+		finally:
+			if new_container is not None:
+				new_container.kill()
+
+	else:
+		open_flag = 'w'
+		if output_type is ArchiveTypes.TAR_GZ:
+			open_flag += ":gz"			
+		elif output_type is ArchiveTypes.ZIP:
+			pass
+		else:
+			throw_error(Messages.INVALID_ARCHIVE_TYPE, output_type.value)
+
+		archive_suffix = ".{}".format(output_type.value)
+		archive_name = "{}.{}".format(project_name, "Server" if binary is O3DE_ProjectBinaries.SERVER else "Client") if output_name is None else output_name
+		if not archive_name.endswith(archive_suffix):
+			archive_name += archive_suffix
+
+		archive_file = output_root_dir / archive_name
+		with (zipfile.ZipFile(archive_file, open_flag, ) if output_type is ArchiveTypes.ZIP else tarfile.open(archive_file, open_flag)) as new_archive:
+			copied = copy_project_to_archive(bin_dir, cache_dir, bundle_files, binary_name, platform, variant, new_archive, output_type, pathlib.PosixPath("/"))
+			if not copied:
+				throw_error(Messages.ERROR_SAVE_IMAGE, archive_name)
+
+		if CONTAINER_CLIENT.is_in_container:
+			relative_path = archive_file.relative_to(project_dir)
+			real_archive_file = get_real_project_dir() / relative_path
+		else:
+			real_archive_file = archive_file
+
+		print_msg(Level.INFO, Messages.EXPORT_ARCHIVE_COMPLETED, real_archive_file)
+
+
 def manage_project_settings(project_dir, setting_key_section , setting_key_index, setting_key_name, setting_value, clear):
 	run_builder(None, None, project_dir, None, BuilderCommands.SETTINGS, Targets.PROJECT, setting_key_section, setting_key_index, setting_key_name, setting_value, clear, False, True)
 
@@ -1824,14 +2135,14 @@ def open_project(project_dir, engine_config = None, new_engine_version = None, e
 		else:
 			throw_error(Messages.MISSING_INSTALL_ENGINE_PROJECT, engine_version)
 
-	asset_processor_container = check_asset_processor(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs, wait = (engine_binary is O3DE_EngineBinaries.ASSET_PROCESSOR))
+	asset_processor_container = check_asset_processor(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs, wait = (engine_binary is O3DE_EngineBinaries.ASSET_PROCESSOR)) if engine_binary is not O3DE_EngineBinaries.ASSET_BUNDLER else None
 
 	if engine_binary is not O3DE_EngineBinaries.ASSET_PROCESSOR:
 		container_command = [ RunnerCommands.OPEN, engine_binary, engine_config ]
-		if NETWORK_NAME is None:
+		if NETWORK_NAME is None and asset_processor_container is not None:
 			exec_in_runner(asset_processor_container, container_command)
 		else:
-			run_runner(engine_version, engine_config, O3DE_Variants.NON_MONOLITHIC, engine_workflow, project_dir, external_gem_dirs, True, *container_command)
+			run_runner(engine_version, engine_config, O3DE_Variants.NON_MONOLITHIC, engine_workflow, project_dir, external_gem_dirs, False, True, *container_command)
 
 
 def run_project(project_dir, binary, config, variant, level_name = None, console_commands = None, console_variables = None, connect_to_server = False, listen_on_port = None):
@@ -1917,7 +2228,7 @@ def run_project(project_dir, binary, config, variant, level_name = None, console
 	if NETWORK_NAME is None and asset_processor_container is not None:
 		exec_in_runner(asset_processor_container, container_command)
 	else:	
-		run_runner(engine_version, config, variant, engine_workflow, project_dir, external_gem_dirs, True, *container_command)
+		run_runner(engine_version, config, variant, engine_workflow, project_dir, external_gem_dirs, False, True, *container_command)
 
 
 # --- CLI HANDLER (GENERIC) ---
@@ -2311,6 +2622,66 @@ def handle_clean_command(project_path, config_name, variant_name, remove_build, 
 		close_container_client()
 
 
+def handle_export_assets_command(project_path, config_name):
+	config = O3DE_Configs.from_value(config_name)
+	if config is None:
+		throw_error(Messages.INVALID_CONFIG, config_name)
+
+	project_dir = parse_project_path(project_path)
+	if not project_dir.is_dir():
+		throw_error(Messages.INVALID_DIRECTORY, (project_path if project_path is not None else project_dir))
+	elif not is_project(project_dir):
+		throw_error(Messages.PROJECT_NOT_FOUND, (project_path if project_path is not None else project_dir))
+
+	try:
+		check_container_client()
+		check_runner()
+
+		open_project(project_dir, config, None, O3DE_EngineBinaries.ASSET_BUNDLER)
+
+	finally:
+		close_container_client()
+
+
+def handle_export_binary_command(project_path, binary_name, config_name, variant_name, output_type_name, output_name, level_names, bundle_names, build_source, process_assets):
+	binary = O3DE_ProjectBinaries.from_value(binary_name)
+	if binary is None:
+		throw_error(Messages.INVALID_BINARY, binary_name)
+	
+	config = O3DE_Configs.from_value(config_name)
+	if config is None:
+		throw_error(Messages.INVALID_CONFIG, config_name)
+
+	variant = O3DE_Variants.from_value(variant_name)
+	if variant is None:
+		throw_error(Messages.INVALID_VARIANT, variant_name)
+
+	if output_type_name is not None:
+		output_type = ArchiveTypes.from_value(output_type_name)
+		if output_type is None:
+			throw_error(Messages.INVALID_ARCHIVE_TYPE, output_type_name)
+	else:
+		output_type = ArchiveTypes.ZIP if OPERATING_SYSTEM.family is OSFamilies.WINDOWS else ArchiveTypes.TAR_GZ
+
+	project_dir = parse_project_path(project_path)
+	if not project_dir.is_dir():
+		throw_error(Messages.INVALID_DIRECTORY, (project_path if project_path is not None else project_dir))
+	elif not is_project(project_dir):
+		throw_error(Messages.PROJECT_NOT_FOUND, (project_path if project_path is not None else project_dir))
+
+	try:
+		check_container_client()
+		
+		check_builder()
+		if output_type is ArchiveTypes.CONTAINER:
+			check_runner()
+
+		export_project(project_dir, binary, config, variant, output_type, output_name, level_names, bundle_names, build_source, process_assets)
+
+	finally:
+		close_container_client()
+
+
 def handle_init_project_command(engine_version, project_path, alias, is_minimal_project):
 	project_dir = parse_project_path(project_path)
 	if not project_dir.is_dir():
@@ -2536,6 +2907,20 @@ def main():
 	DESCRIPTIONS_CLEAN_CACHE = "Remove cached files"
 	DESCRIPTIONS_CLEAN_VARIANT = DESCRIPTIONS_COMMON_VARIANT
 
+	DESCRIPTIONS_EXPORT = "Generate a releasable package containing the project runtimes"
+	DESCRIPTIONS_EXPORT_ASSETS = "Manage assets to be packed for each platform"
+	DESCRIPTIONS_EXPORT_CLIENT = "Generate a package for the standalone / client runtime"
+	DESCRIPTIONS_EXPORT_SERVER = "Generate a package for the dedicated server runtime"
+	DESCRIPTIONS_EXPORT_ALIAS = "Assign an output name, instead of the project name"
+	DESCRIPTIONS_EXPORT_BUNDLES = "Use existing asset bundle(s), instead of generating new one(s)"
+	DESCRIPTIONS_EXPORT_CONFIG = DESCRIPTIONS_COMMON_CONFIG
+	DESCRIPTIONS_EXPORT_LEVELS = "Level(s) to be included in the package. Leave empty to export all levels"
+	DESCRIPTIONS_EXPORT_PROJECT = DESCRIPTIONS_COMMON_PROJECT
+	DESCRIPTIONS_EXPORT_SKIP_BUILD_SOURCE = "Don't re-build the project runtime if it already exists"
+	DESCRIPTIONS_EXPORT_SKIP_PROCESS_ASSETS = "Don't re-process assets if the cache directory isn't empty"
+	DESCRIPTIONS_EXPORT_TYPE = "Package type: {}".format(", ".join([ archive_type.value for archive_type in ArchiveTypes ]))
+	DESCRIPTIONS_EXPORT_VARIANT = DESCRIPTIONS_COMMON_VARIANT
+
 	DESCRIPTIONS_INIT = "Create a new empty workspace"
 	DESCRIPTIONS_INIT_ALIAS = "Assign a project name, instead of the directory name"
 	DESCRIPTIONS_INIT_ENGINE = DESCRIPTIONS_COMMON_ENGINE
@@ -2682,7 +3067,7 @@ def main():
 	upgrade_engine_parser = upgrade_subparsers.add_parser(CliSubCommands.ENGINE.value, parents = [ global_parser ], help = DESCRIPTIONS_UPGRADE_ENGINE)
 	upgrade_engine_parser.set_defaults(handler = handle_upgrade_engine_command)
 	upgrade_engine_parser.add_argument("engine_version", metavar="version", help = DESCRIPTIONS_UPGRADE_ENGINE_VERSION)
-	upgrade_engine_parser.add_argument(print_option(LongOptions.SKIP_REBUILD), dest = "rebuild", action = "store_false", help = DESCRIPTIONS_UPGRADE_ENGINE_SKIP_REBUILD)
+	upgrade_engine_parser.add_argument(print_option(LongOptions.SKIP_BUILD), dest = "rebuild", action = "store_false", help = DESCRIPTIONS_UPGRADE_ENGINE_SKIP_REBUILD)
 
 	upgrade_gem_parser = upgrade_subparsers.add_parser(CliSubCommands.GEM.value, parents = [ global_parser ], help = DESCRIPTIONS_UPGRADE_GEM)
 	upgrade_gem_parser.set_defaults(handler = handle_upgrade_gem_command)
@@ -2699,7 +3084,7 @@ def main():
 	
 	add_gem_parser = add_subparsers.add_parser(CliSubCommands.GEM.value, parents = [ global_parser, add_common_parser ], help = DESCRIPTIONS_ADD_GEM)
 	add_gem_parser.set_defaults(handler = handle_add_gem_command)
-	add_gem_parser.add_argument(print_option(LongOptions.SKIP_REBUILD), dest = "rebuild", action = "store_false", help = DESCRIPTIONS_ADD_GEM_SKIP_REBUILD)
+	add_gem_parser.add_argument(print_option(LongOptions.SKIP_BUILD), dest = "rebuild", action = "store_false", help = DESCRIPTIONS_ADD_GEM_SKIP_REBUILD)
 	add_gem_parser.add_argument("gem_value", metavar="reference", help = DESCRIPTIONS_ADD_GEM_REFERENCE)
 
 	build_parser = subparsers.add_parser(CliCommands.BUILD.value, parents = [ global_parser ], help = DESCRIPTIONS_BUILD)
@@ -2734,6 +3119,33 @@ def main():
 	clean_group.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "config_name", default = O3DE_DEFAULT_CONFIG.value, metavar = "<config>", help = DESCRIPTIONS_CLEAN_CONFIG)
 	clean_group.add_argument(print_option(ShortOptions.FORCE), print_option(LongOptions.FORCE), action = "store_true", help = DESCRIPTIONS_CLEAN_FORCE)
 
+	export_parser = subparsers.add_parser(CliCommands.EXPORT.value, help = DESCRIPTIONS_EXPORT)
+	export_parser.set_defaults(handler = handle_empty_command)
+	export_common_parser = argparse.ArgumentParser(add_help = False)
+	export_common_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PROJECT), dest = "project_path", metavar = "<path>", help = DESCRIPTIONS_EXPORT_PROJECT)
+	export_binaries_parser = argparse.ArgumentParser(add_help = False)
+	export_binaries_parser.add_argument(print_option(LongOptions.ALIAS), dest = "output_name", metavar="<string>", help = DESCRIPTIONS_EXPORT_ALIAS)
+	export_binaries_parser.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "config_name", default = O3DE_Configs.RELEASE.value, metavar = "<config>", help = DESCRIPTIONS_EXPORT_CONFIG)
+	export_binaries_parser.add_argument(print_option(ShortOptions.TYPE), print_option(LongOptions.TYPE), dest = "output_type_name", default = None, metavar = "<type>", help = DESCRIPTIONS_EXPORT_TYPE)
+	export_binaries_parser.add_argument(print_option(LongOptions.SKIP_BUILD), dest = "build_source", action = "store_false", help = DESCRIPTIONS_EXPORT_SKIP_BUILD_SOURCE)
+	export_binaries_parser.add_argument(print_option(LongOptions.SKIP_PROCESS), dest = "process_assets", action = "store_false", help = DESCRIPTIONS_EXPORT_SKIP_PROCESS_ASSETS)
+	export_binaries_parser.add_argument(print_option(LongOptions.VARIANT), dest = "variant_name", default = O3DE_Variants.MONOLITHIC.value, metavar = "<variant>", help = DESCRIPTIONS_EXPORT_VARIANT)
+	export_subparsers = export_parser.add_subparsers()
+	
+	export_group = export_binaries_parser.add_mutually_exclusive_group()
+	export_group.add_argument(print_option(LongOptions.BUNDLE), dest = "bundle_names", action = "append", metavar = "<pak>", help = DESCRIPTIONS_EXPORT_BUNDLES)
+	export_group.add_argument(print_option(ShortOptions.LEVEL), print_option(LongOptions.LEVEL), dest = "level_names", action = "append", metavar = "<level>", help = DESCRIPTIONS_EXPORT_LEVELS)
+
+	export_assets_parser = export_subparsers.add_parser(CliSubCommands.ASSETS.value, parents = [ global_parser, export_common_parser ], help = DESCRIPTIONS_EXPORT_ASSETS)
+	export_assets_parser.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "config_name", default = O3DE_DEFAULT_CONFIG.value, metavar = "<config>", help = DESCRIPTIONS_EXPORT_CONFIG)
+	export_assets_parser.set_defaults(handler = handle_export_assets_command)
+
+	export_client_parser = export_subparsers.add_parser(O3DE_ProjectBinaries.CLIENT.value, parents = [ global_parser, export_common_parser, export_binaries_parser ], help = DESCRIPTIONS_EXPORT_CLIENT)
+	export_client_parser.set_defaults(handler = handle_export_binary_command, binary_name = O3DE_ProjectBinaries.CLIENT.value)
+
+	export_server_parser = export_subparsers.add_parser(O3DE_ProjectBinaries.SERVER.value, parents = [ global_parser, export_common_parser, export_binaries_parser ], help = DESCRIPTIONS_EXPORT_SERVER)
+	export_server_parser.set_defaults(handler = handle_export_binary_command, binary_name = O3DE_ProjectBinaries.SERVER.value)
+
 	init_parser = subparsers.add_parser(CliCommands.INIT.value, help = DESCRIPTIONS_INIT)
 	init_parser.set_defaults(handler = handle_empty_target)
 	init_common_parser = argparse.ArgumentParser(add_help = False)
@@ -2744,7 +3156,7 @@ def main():
 
 	init_gem_parser = init_subparsers.add_parser(CliSubCommands.GEM.value, parents = [ global_parser, init_common_parser ], help = DESCRIPTIONS_INIT_GEM)
 	init_gem_parser.set_defaults(handler = handle_init_gem_command)
-	init_gem_parser.add_argument(print_option(LongOptions.TYPE), dest = "gem_type", default = O3DE_GemTypes.CODE_AND_ASSETS.value, metavar = "<type>", help = DESCRIPTIONS_INIT_GEM_TYPE)
+	init_gem_parser.add_argument(print_option(ShortOptions.TYPE), print_option(LongOptions.TYPE), dest = "gem_type", default = O3DE_GemTypes.CODE_AND_ASSETS.value, metavar = "<type>", help = DESCRIPTIONS_INIT_GEM_TYPE)
 	init_gem_parser.add_argument(print_option(LongOptions.SKIP_EXAMPLES), dest = "has_examples", action = "store_false", help = DESCRIPTIONS_INIT_GEM_SKIP_EXAMPLES)
 
 	init_project_parser = init_subparsers.add_parser(CliSubCommands.PROJECT.value, parents = [ global_parser, init_common_parser ], help = DESCRIPTIONS_INIT_PROJECT)
@@ -2770,7 +3182,7 @@ def main():
 	remove_subparsers = remove_parser.add_subparsers()
 	remove_gem_parser = remove_subparsers.add_parser(CliSubCommands.GEM.value, parents = [ global_parser, remove_common_parser ], help = DESCRIPTIONS_REMOVE_GEM)
 	remove_gem_parser.set_defaults(handler = handle_remove_gem_command)
-	remove_gem_parser.add_argument(print_option(LongOptions.SKIP_REBUILD), dest = "rebuild", action = "store_false", help = DESCRIPTIONS_REMOVE_GEM_SKIP_REBUILD)
+	remove_gem_parser.add_argument(print_option(LongOptions.SKIP_BUILD), dest = "rebuild", action = "store_false", help = DESCRIPTIONS_REMOVE_GEM_SKIP_REBUILD)
 	remove_gem_parser.add_argument("gem_value", metavar="reference", help = DESCRIPTIONS_REMOVE_GEM_VERSION)
 
 	run_parser = subparsers.add_parser(CliCommands.RUN.value, parents = [ global_parser ], help = DESCRIPTIONS_RUN)
@@ -2890,6 +3302,17 @@ def main():
 				throw_error(Messages.INVALID_SUBCOMMAND, help_command, help_subcommand)
 		elif help_command == CliCommands.CLEAN.value:
 			help_parser = clean_parser
+		elif help_command == CliCommands.EXPORT.value:
+			if help_subcommand is None:
+				help_parser = export_parser
+			elif help_subcommand == CliSubCommands.ASSETS.value:
+				help_parser = export_assets_parser
+			elif help_subcommand == O3DE_ProjectBinaries.CLIENT.value:
+				help_parser = export_client_parser
+			elif help_subcommand == O3DE_ProjectBinaries.SERVER.value:
+				help_parser = export_server_parser
+			else:
+				throw_error(Messages.INVALID_SUBCOMMAND, help_command, help_subcommand)
 		elif help_command == CliCommands.INIT.value:
 			if help_subcommand is None:
 				help_parser = init_parser

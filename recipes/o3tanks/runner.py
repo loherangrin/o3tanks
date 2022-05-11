@@ -161,6 +161,9 @@ def run_binary(engine_workflow, binary_file, options = {}, arguments = [], rende
 		else:
 			command.append("--{}".format(option_name))
 
+	if rendering and (GPU_DRIVER_NAME is None):
+		command.append("-NullRenderer")
+
 	for argument in arguments:
 		command.append(argument)
 
@@ -175,14 +178,22 @@ def run_binary(engine_workflow, binary_file, options = {}, arguments = [], rende
 
 # --- FUNCTIONS (PROJECT) ---
 
-def open_project(binary, config, force):
-	if binary is O3DE_EngineBinaries.ASSET_PROCESSOR:
+def open_project(binary, config, force, arguments_and_options = None):
+	if binary is O3DE_EngineBinaries.ASSET_BUNDLER:
+		binary_name = "AssetBundler"
+		if DISPLAY_ID < 0:
+			binary_name = binary_name + "Batch"
+			force = False
+
+	elif binary is O3DE_EngineBinaries.ASSET_PROCESSOR:
 		binary_name = "AssetProcessor"
 		if DISPLAY_ID < 0:
 			binary_name = binary_name + "Batch"
 			force = False
+
 	elif binary is O3DE_EngineBinaries.EDITOR:
 		binary_name = "Editor"
+
 	else:
 		throw_error(Messages.INVALID_BINARY, binary.value)
 
@@ -201,7 +212,7 @@ def open_project(binary, config, force):
 		asset_processor = register_instance(binary, DEFAULT_ASSET_PROCESSOR_LISTENING_PORT, True)
 		old_gems = register_gems(O3DE_CLI_FILE, O3DE_PROJECT_SOURCE_DIR, O3DE_GEMS_DIR, O3DE_GEMS_EXTERNAL_DIR, show_unmanaged = True)
 
-	else:
+	elif binary is not O3DE_EngineBinaries.ASSET_BUNDLER:
 		if asset_processor is None:
 			throw_error(Messages.MISSING_ASSET_PROCESSOR)
 
@@ -215,17 +226,24 @@ def open_project(binary, config, force):
 		"engine-path": engine_dir,
 		"project-path": O3DE_PROJECT_SOURCE_DIR,
 		"regset=/Amazon/AzCore/Bootstrap/project_path": O3DE_PROJECT_SOURCE_DIR,
-		"regset=/Amazon/AzCore/Bootstrap/engine_path": engine_dir,
-		"regset=/Amazon/AzCore/Bootstrap/remote_ip": asset_processor.ip,
-		"regset=/Amazon/AzCore/Bootstrap/remote_port": asset_processor.port
+		"regset=/Amazon/AzCore/Bootstrap/engine_path": engine_dir
 	}
+
+	if binary is not O3DE_EngineBinaries.ASSET_BUNDLER:
+		options["regset=/Amazon/AzCore/Bootstrap/remote_ip"] = asset_processor.ip
+		options["regset=/Amazon/AzCore/Bootstrap/remote_port"] = asset_processor.port
 
 	if binary is O3DE_EngineBinaries.ASSET_PROCESSOR:
 		if NETWORK_SUBNET is not None:
 			options["regset=/Amazon/AzCore/Bootstrap/allowed_list"] = NETWORK_SUBNET
 
+	if arguments_and_options is not None:
+		for value in arguments_and_options:
+			arguments.append(value)
+
 	result = run_binary(
 		engine_workflow, binary_file,
+		arguments = arguments,
 		options = options,
 		rendering = True if (binary is O3DE_EngineBinaries.EDITOR) else False,
 		wait = True
@@ -384,7 +402,13 @@ def main():
 		config = deserialize_arg(3, O3DE_Configs)
 		force = deserialize_arg(4, bool) if len(sys.argv) > 4 else False
 
-		open_project(binary, config, force)
+		if len(sys.argv) > 5:
+			index = 5
+			arguments_and_options = deserialize_args(index, list, str)
+		else:
+			arguments_and_options = []
+
+		open_project(binary, config, force, arguments_and_options)
 
 	elif command == RunnerCommands.RUN:
 		binary = deserialize_arg(2, O3DE_ProjectBinaries)
