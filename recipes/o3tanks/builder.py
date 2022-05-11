@@ -25,8 +25,9 @@ import subprocess
 
 # -- SUBFUNCTIONS ---
 
-def delete_openssl_files(build_dir, config):
-	build_config_dir = get_build_config_path(build_dir, config)
+def delete_openssl_files(builds_dir, config, variant):
+	build_dir = get_build_path(builds_dir, variant)
+	build_config_dir = get_build_bin_path(build_dir, config)
 	openssl_files = [ 
 		"libcrypto.so",
 		"libcrypto.so.1.1",
@@ -67,13 +68,9 @@ def search_clang_binaries():
 	return [ None, None ]
 
 
-def generate_configurations(engine_workflow, is_engine):
-	if is_engine:
-		source_dir = O3DE_ENGINE_SOURCE_DIR
-		build_dir = O3DE_ENGINE_BUILD_DIR
-	else:
-		source_dir = O3DE_PROJECT_SOURCE_DIR
-		build_dir = O3DE_PROJECT_BUILD_DIR
+def generate_configurations(engine_workflow, engine_variant, is_engine):
+	source_dir = O3DE_ENGINE_SOURCE_DIR if is_engine else O3DE_PROJECT_SOURCE_DIR
+	build_dir = get_build_path(get_builds_root_path(source_dir), engine_variant)
 
 	common_options = [
 		"-B", str(build_dir),
@@ -95,6 +92,9 @@ def generate_configurations(engine_workflow, is_engine):
 			return True
 	else:
 		common_options.append("-DLY_PROJECTS=AutomatedTesting")
+
+	if engine_variant is O3DE_Variants.MONOLITHIC:
+		common_options.append("-DLY_MONOLITHIC_GAME=1")
 
 	if OPERATING_SYSTEM.family is OSFamilies.LINUX:
 		clang_bin, clang_cpp_bin = search_clang_binaries()
@@ -169,21 +169,25 @@ def execute_cmake(arguments):
 
 # --- FUNCTIONS (ENGINE) ---
 
-def build_engine(engine_workflow, engine_config):
+def build_engine(engine_workflow, engine_config, engine_variant):
 	if engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SOURCE:
 		return True
 	elif engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK:
-		targets = [ "install" ]
+		if OPERATING_SYSTEM.family is OSFamilies.WINDOWS:
+			targets = [ "INSTALL" ]
+		else:
+			targets = [ "install" ]
 	elif engine_workflow is O3DE_BuildWorkflows.ENGINE_CENTRIC:
 		targets = [ "Editor", "AutomatedTesting.GameLauncher" ]
 	else:
 		throw_error(Messages.INVALID_BUILD_WORKFLOW, engine_workflow)
 
-	if not O3DE_ENGINE_BUILD_DIR.exists() or is_directory_empty(O3DE_ENGINE_BUILD_DIR):
-		generate_engine_configurations(engine_workflow)
+	engine_build_dir = get_build_path(O3DE_ENGINE_BUILDS_DIR, engine_variant)
+	if not engine_build_dir.exists() or is_directory_empty(engine_build_dir):
+		generate_engine_configurations(engine_workflow, engine_variant)
 
 	options = [
-		"--build", str(O3DE_ENGINE_BUILD_DIR),
+		"--build", str(engine_build_dir),
 		"--config", engine_config.value,
 		"--target", *targets
 	]
@@ -246,46 +250,54 @@ def build_engine(engine_workflow, engine_config):
 		current_ap_config_file.unlink()
 		new_ap_config_file.rename(current_ap_config_file)
 
-	delete_openssl_files(O3DE_ENGINE_BUILD_DIR, engine_config)
+	delete_openssl_files(O3DE_ENGINE_BUILDS_DIR, engine_config, engine_variant)
 
 	return result.returncode
 
 
-def clean_engine(engine_config, remove_build, remove_install):
+def clean_engine(engine_config, engine_variant, remove_build, remove_install):
 	clean_dirs = []
 
-	has_other_build_config = False
 	has_other_install_config = False
 
-	if engine_config is not None:
-		if remove_build:
-			for other_config in O3DE_Configs:
-				if other_config is engine_config:
-					continue
+	engine_variants = [ O3DE_Variants.NON_MONOLITHIC, O3DE_Variants.MONOLITHIC ] if engine_variant is None else [ engine_variant ]
+	for variant in engine_variants:
+		has_other_build_config = False
 
-				if has_build_config(O3DE_ENGINE_BUILD_DIR, other_config):
-					has_other_build_config = True
-					break
+		engine_build_dir = get_build_path(O3DE_ENGINE_BUILDS_DIR, variant)
 
-			if has_other_build_config:
-				build_config_dir = get_build_config_path(O3DE_ENGINE_BUILD_DIR, engine_config)
-				clean_dirs.append(build_config_dir)
+		if engine_config is not None:
+			if remove_build:
+				for other_config in O3DE_Configs:
+					if other_config is engine_config:
+						continue
 
-		if remove_install:
-			for other_config in O3DE_Configs:
-				if other_config is engine_config:
-					continue
+					if has_build_config(engine_build_dir, other_config):
+						has_other_build_config = True
+						break
 
-				if has_install_config(O3DE_ENGINE_INSTALL_DIR, other_config):
-					has_other_install_config = True
-					break
+				if has_other_build_config:
+					build_config_dir = get_build_bin_path(engine_build_dir, engine_config)
+					clean_dirs.append(build_config_dir)
 
-			if has_other_install_config:
-				install_config_dir = get_install_config_path(O3DE_ENGINE_INSTALL_DIR, engine_config)
-				clean_dirs.append(install_config_dir)
+			if remove_install:
+				for other_config in O3DE_Configs:
+					if other_config is engine_config:
+						continue
 
-	if remove_build and not has_other_build_config:
-		clean_dirs.append(O3DE_ENGINE_BUILD_DIR)
+					if has_install_config(O3DE_ENGINE_INSTALL_DIR, other_config, variant):
+						has_other_install_config = True
+						break
+
+				if has_other_install_config:
+					install_bin_dir = get_install_bin_path(O3DE_ENGINE_INSTALL_DIR, engine_config, variant)
+					clean_dirs.append(install_bin_dir)
+
+					install_lib_dir = get_install_bin_path(O3DE_ENGINE_INSTALL_DIR, engine_config, variant)
+					clean_dirs.append(install_lib_dir)
+
+		if remove_build and not has_other_build_config:
+			clean_dirs.append(engine_build_dir)
 
 	if remove_install and not has_other_install_config:
 		clean_dirs.append(O3DE_ENGINE_INSTALL_DIR)
@@ -294,7 +306,7 @@ def clean_engine(engine_config, remove_build, remove_install):
 		clear_directory(clean_dir)
 
 
-def generate_engine_configurations(engine_workflow):
+def generate_engine_configurations(engine_workflow, engine_variant):
 	get_python_file = get_script_filename("get_python")
 
 	try:
@@ -309,7 +321,7 @@ def generate_engine_configurations(engine_workflow):
 	if result.returncode != 0:
 		throw_error(Messages.UNCOMPLETED_REGISTRATION, result.returncode, "\n{}\n{}".format(result.stdout, result.stderr))
 
-	generated = generate_configurations(engine_workflow, True)
+	generated = generate_configurations(engine_workflow, engine_variant, True)
 	if not generated:
 		throw_error(Messages.UNCOMPLETED_SOLUTION_GENERATION)
 
@@ -466,18 +478,22 @@ def change_gem_status(project_dir, gem_reference, active):
 
 # --- FUNCTIONS (PROJECT) ---
 
-def build_project(config, binary, regenerate_solution = False):
+def build_project(config, variant, binary, regenerate_solution = False):
 	if is_directory_empty(O3DE_PROJECT_SOURCE_DIR):
 		throw_error(Messages.PROJECT_DIR_EMPTY)
 
-	if regenerate_solution or (not O3DE_PROJECT_BUILD_DIR.is_dir() or is_directory_empty(O3DE_PROJECT_BUILD_DIR)):
-		engine_workflow = get_build_workflow(O3DE_ENGINE_SOURCE_DIR, O3DE_ENGINE_BUILD_DIR, O3DE_ENGINE_INSTALL_DIR)
+	project_build_dir = get_build_path(O3DE_PROJECT_BUILDS_DIR, variant)
+
+	if regenerate_solution or (not project_build_dir.is_dir() or is_directory_empty(project_build_dir)):
+		engine_build_dir = get_build_path(O3DE_ENGINE_BUILDS_DIR, variant)
+		
+		engine_workflow = get_build_workflow(O3DE_ENGINE_SOURCE_DIR, engine_build_dir, O3DE_ENGINE_INSTALL_DIR)
 		if engine_workflow is O3DE_BuildWorkflows.ENGINE_CENTRIC:
 			throw_error(Messages.INCOMPATIBLE_BUILD_PROJECT_AND_WORKFLOW, engine_workflow.value)
 
 		old_gems = register_gems(O3DE_CLI_FILE, O3DE_PROJECT_SOURCE_DIR, O3DE_GEMS_DIR, O3DE_GEMS_EXTERNAL_DIR, show_unmanaged = True)
 
-		generated = generate_configurations(engine_workflow, False)
+		generated = generate_configurations(engine_workflow, variant, False)
 		if not generated:
 			clear_registered_gems(O3DE_PROJECT_SOURCE_DIR, old_gems)
 			throw_error(Messages.UNCOMPLETED_SOLUTION_GENERATION)
@@ -485,7 +501,7 @@ def build_project(config, binary, regenerate_solution = False):
 		old_gems = register_gems(O3DE_CLI_FILE, O3DE_PROJECT_SOURCE_DIR, O3DE_GEMS_DIR, O3DE_GEMS_EXTERNAL_DIR, show_unmanaged = True)
 
 	options = [
-		"--build", str(O3DE_PROJECT_BUILD_DIR),
+		"--build", str(project_build_dir),
 		"--config", config.value
 	]
 
@@ -522,7 +538,7 @@ def build_project(config, binary, regenerate_solution = False):
 	result = execute_cmake(options)
 
 	if result.returncode == 0:
-		delete_openssl_files(O3DE_PROJECT_BUILD_DIR, config)
+		delete_openssl_files(O3DE_PROJECT_BUILDS_DIR, config, variant)
 
 	clear_registered_gems(O3DE_PROJECT_SOURCE_DIR, old_gems)
 
@@ -555,19 +571,23 @@ def check_project_settings(project_dir):
 		gitignore_file.write_text(private_name + '/')
 
 
-def clean_project(config, remove_build, remove_cache, force):
+def clean_project(config, variant, remove_build, remove_cache, force):
 	exit_code = 0
 
 	if remove_build:
-		if force:
-			clear_directory(O3DE_PROJECT_BUILD_DIR)
-		else:
-			result = execute_cmake([
-				"--build", str(O3DE_PROJECT_BUILD_DIR),
-				"--config", config.value,
-				"--target", "clean"
-			])
-			exit_code = result.returncode
+		project_variants = [ O3DE_Variants.NON_MONOLITHIC, O3DE_Variants.MONOLITHIC ] if variant is None else [ variant ]
+		for project_variant in project_variants:
+			project_build_dir = get_build_path(O3DE_PROJECT_BUILDS_DIR, project_variant)
+
+			if force:
+				clear_directory(project_build_dir)
+			else:
+				result = execute_cmake([
+					"--build", str(project_build_dir),
+					"--config", config.value,
+					"--target", "clean"
+				])
+				exit_code = result.returncode
 
 	if remove_cache:
 		clear_directory(O3DE_PROJECT_CACHE_DIR, not force)
@@ -680,7 +700,8 @@ def write_project_setting(project_dir, setting_section, setting_index, setting_n
 				if result_type is not RepositoryResultType.OK:
 					throw_error(Messages.INVALID_REPOSITORY)
 
-				engine_workflow = get_build_workflow(O3DE_ENGINE_SOURCE_DIR, O3DE_ENGINE_BUILD_DIR, O3DE_ENGINE_INSTALL_DIR)
+				engine_build_dir = get_build_path(O3DE_ENGINE_BUILDS_DIR, O3DE_Variants.NON_MONOLITHIC)
+				engine_workflow = get_build_workflow(O3DE_ENGINE_SOURCE_DIR, engine_build_dir, O3DE_ENGINE_INSTALL_DIR)
 				engine_workflow_value = engine_workflow.value if engine_workflow is not None else None
 
 			else:
@@ -1001,19 +1022,20 @@ def main():
 
 	elif command == BuilderCommands.BUILD:
 		config = deserialize_arg(3, O3DE_Configs)
+		variant = deserialize_arg(4, O3DE_Variants)
 		
 		if target == Targets.ENGINE:
-			engine_workflow = deserialize_arg(4, O3DE_BuildWorkflows)
+			engine_workflow = deserialize_arg(5, O3DE_BuildWorkflows)
 
-			exit_code = build_engine(engine_workflow, config)
+			exit_code = build_engine(engine_workflow, config, variant)
 			if exit_code != 0:
 				exit(exit_code)
 
 		elif target == Targets.PROJECT:
-			binary = deserialize_arg(4, O3DE_ProjectBinaries) if len(sys.argv) > 4 else None
-			regenerate_solution = deserialize_arg(5, bool) if len(sys.argv) > 5 else False
+			binary = deserialize_arg(5, O3DE_ProjectBinaries) if len(sys.argv) > 5 else None
+			regenerate_solution = deserialize_arg(6, bool) if len(sys.argv) > 6 else False
 
-			exit_code = build_project(config, binary, regenerate_solution)
+			exit_code = build_project(config, variant, binary, regenerate_solution)
 			if exit_code != 0:
 				exit(exit_code)
 
@@ -1022,21 +1044,23 @@ def main():
 
 	elif command == BuilderCommands.CLEAN:
 		if target == Targets.ENGINE:
-			config = deserialize_arg(3, O3DE_Configs)
-			remove_build = deserialize_arg(4, bool)
-			remove_install = deserialize_arg(5, bool)
+			engine_config = deserialize_arg(3, O3DE_Configs)
+			engine_variant = deserialize_arg(4, O3DE_Variants)
+			remove_build = deserialize_arg(5, bool)
+			remove_install = deserialize_arg(6, bool)
 
-			exit_code = clean_engine(config, remove_build, remove_install)
+			exit_code = clean_engine(engine_config, engine_variant, remove_build, remove_install)
 			if exit_code != 0:
 				exit(exit_code)
 
 		elif target == Targets.PROJECT:
 			config = deserialize_arg(3, O3DE_Configs)
-			remove_build = deserialize_arg(4, bool)
-			remove_cache = deserialize_arg(5, bool)
-			force = deserialize_arg(6, bool)
+			variant = deserialize_arg(4, O3DE_Variants)
+			remove_build = deserialize_arg(5, bool)
+			remove_cache = deserialize_arg(6, bool)
+			force = deserialize_arg(7, bool)
 			
-			exit_code = clean_project(config, remove_build, remove_cache, force)
+			exit_code = clean_project(config, variant, remove_build, remove_cache, force)
 			if exit_code != 0:
 				exit(exit_code)
 			
@@ -1045,9 +1069,10 @@ def main():
 
 	elif command == BuilderCommands.INIT:
 		if target == Targets.ENGINE:
-			engine_workflow = deserialize_arg(3, O3DE_BuildWorkflows)
+			engine_variant = deserialize_arg(3, O3DE_Variants)
+			engine_workflow = deserialize_arg(4, O3DE_BuildWorkflows)
 
-			generate_engine_configurations(engine_workflow)
+			generate_engine_configurations(engine_workflow, engine_variant)
 
 		elif target == Targets.GEM:
 			gem_name = deserialize_arg(3, str)

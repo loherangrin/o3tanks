@@ -51,20 +51,20 @@ def check_asset_processor(engine_version, engine_config, engine_workflow, projec
 		overwrite_missing_asset_processor = False
 
 	if asset_processor_container is None:
-		asset_processor_container = run_runner(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs, wait, RunnerCommands.OPEN, O3DE_EngineBinaries.ASSET_PROCESSOR, engine_config, overwrite_missing_asset_processor)
+		asset_processor_container = run_runner(engine_version, engine_config, O3DE_Variants.NON_MONOLITHIC, engine_workflow, project_dir, external_gem_dirs, wait, RunnerCommands.OPEN, O3DE_EngineBinaries.ASSET_PROCESSOR, engine_config, overwrite_missing_asset_processor)
 		time.sleep(5)
 
 	return asset_processor_container
 
 
-def check_project_dependencies(project_dir, config = None, check_engine = True, check_gems = True):
+def check_project_dependencies(project_dir, config = None, variant = None, check_engine = True, check_gems = True):
 	was_config_missing = False
 
 	if not check_engine:
 		engine_version = None
 		engine_workflow = None
 	else:
-		result = select_engine(project_dir, config)
+		result = select_engine(project_dir, config, variant)
 		if result.type is DependencyResultType.OK:
 			engine_version, engine_workflow = result.value
 		elif result.type is DependencyResultType.MISSING:
@@ -73,21 +73,23 @@ def check_project_dependencies(project_dir, config = None, check_engine = True, 
 				engine_url = result.value[1]
 				engine_version = None
 				engine_config = config if not None else O3DE_DEFAULT_CONFIG
+				engine_variant = variant if not None else O3DE_DEFAULT_VARIANT
 				engine_workflow = O3DE_DEFAULT_WORKFLOW
 
 			elif missing is LongOptions.CONFIG:
 				engine_url = result.value[1]
 				engine_version = result.value[2]
 				engine_config = result.value[3]
-				engine_workflow = result.value[4]
+				engine_variant = result.value[4]
+				engine_workflow = result.value[5]
 				was_config_missing = True
 
 			else:
 				throw_error(Messages.INVALID_DEPENDENCY_RESULT_VALUE, missing)
 
-			install_missing_engine(project_dir, engine_url, engine_version, engine_config, engine_workflow)
+			install_missing_engine(project_dir, engine_url, engine_version, engine_config, engine_variant, engine_workflow)
 
-			result = select_engine(project_dir, config)
+			result = select_engine(project_dir, config, variant)
 			if result.type is not DependencyResultType.OK:
 				throw_error(Messages.UNCOMPLETED_MISSING_INSTALL)
 
@@ -436,7 +438,7 @@ def search_gem_by_repository(gem_repository):
 	return gem_version
 
 
-def select_engine(project_dir, engine_config):
+def select_engine(project_dir, engine_config, engine_variant):
 	if not (project_dir / PROJECT_EXTRA_PATH).is_dir():
 		return DependencyResult(DependencyResultType.OK, [ O3DE_DEFAULT_VERSION, O3DE_DEFAULT_WORKFLOW ])
 	
@@ -502,8 +504,8 @@ def select_engine(project_dir, engine_config):
 	elif installed_engine_workflow is not engine_workflow:
 		return DependencyResult(DependencyResultType.DIFFERENT, [ EngineSettings.WORKFLOW, installed_engine_workflow.value, engine_workflow.value ])
 
-	if (engine_config is not None) and (engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK) and not has_install_config(install_dir, engine_config):
-		return DependencyResult(DependencyResultType.MISSING, [ LongOptions.CONFIG, engine_url, engine_version, engine_config, engine_workflow ])
+	if (engine_config is not None) and (engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK) and not has_install_config(install_dir, engine_config, engine_variant):
+		return DependencyResult(DependencyResultType.MISSING, [ LongOptions.CONFIG, engine_url, engine_version, engine_config, engine_variant, engine_workflow ])
 
 	return DependencyResult(DependencyResultType.OK, [ engine_version, engine_workflow ])
 
@@ -571,12 +573,12 @@ def select_gem(project_dir, gem_index, gem = None):
 	return DependencyResult(DependencyResultType.OK, gem_version)
 
 
-def select_recommended_config(engine_version):
+def select_recommended_config(engine_version, max_limit = O3DE_Configs.PROFILE):
 	source_volume = CONTAINER_CLIENT.get_volume_name(Volumes.SOURCE, engine_version)
 	source_dir = CONTAINER_CLIENT.get_volume_path(source_volume)
 
 	build_volume = CONTAINER_CLIENT.get_volume_name(Volumes.BUILD, engine_version)
-	build_dir = CONTAINER_CLIENT.get_volume_path(build_volume)
+	build_dir = get_build_path(CONTAINER_CLIENT.get_volume_path(build_volume), O3DE_Variants.NON_MONOLITHIC)
 	
 	install_volume = CONTAINER_CLIENT.get_volume_name(Volumes.INSTALL, engine_version)
 	install_dir = CONTAINER_CLIENT.get_volume_path(install_volume)
@@ -589,16 +591,22 @@ def select_recommended_config(engine_version):
 		for config in O3DE_Configs:
 			if (build_dir is not None) and has_build_config(build_dir, config):
 				engine_config = config
-	
+
+			if config is max_limit:
+				break
+
 	elif engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK:
 		for config in O3DE_Configs:
 			install_builder_image = CONTAINER_CLIENT.get_image_name(Images.INSTALL_BUILDER, engine_version, config)
 
 			if (
 				CONTAINER_CLIENT.image_exists(install_builder_image) or
-				(install_dir is not None and has_install_config(install_dir, config))
+				(install_dir is not None and has_install_config(install_dir, config, O3DE_DEFAULT_VARIANT))
 			):
 				engine_config = config
+
+			if config is max_limit:
+				break
 
 	elif engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SOURCE:
 		engine_config = O3DE_DEFAULT_CONFIG
@@ -865,7 +873,7 @@ def run_builder(engine_version, engine_config, project_dir, external_gem_dirs, *
 			volumes[gems_volume] = str(O3DE_GEMS_DIR)
 
 			build_volume = CONTAINER_CLIENT.get_volume_name(Volumes.BUILD, engine_version)
-			volumes[build_volume] = str(O3DE_ENGINE_BUILD_DIR)
+			volumes[build_volume] = str(O3DE_ENGINE_BUILDS_DIR)
 			
 			install_volume = CONTAINER_CLIENT.get_volume_name(Volumes.INSTALL, engine_version)
 			volumes[install_volume] = str(O3DE_ENGINE_INSTALL_DIR)
@@ -893,7 +901,7 @@ def run_builder(engine_version, engine_config, project_dir, external_gem_dirs, *
 	return completed
 
 
-def run_runner(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs, wait, *command):
+def run_runner(engine_version, engine_config, engine_variant, engine_workflow, project_dir, external_gem_dirs, wait, *command):
 	if engine_config is None:
 		throw_error(Messages.MISSING_CONFIG)
 
@@ -905,13 +913,13 @@ def run_runner(engine_version, engine_config, engine_workflow, project_dir, exte
 		source_volume = CONTAINER_CLIENT.get_volume_name(Volumes.SOURCE, engine_version)
 
 		build_volume = CONTAINER_CLIENT.get_volume_name(Volumes.BUILD, engine_version)
-		build_dir = CONTAINER_CLIENT.get_volume_path(build_volume)
+		build_dir = get_build_path(CONTAINER_CLIENT.get_volume_path(build_volume), engine_variant)
 
 		if not is_engine_installed(engine_version) or not has_build_config(build_dir, engine_config):
 			throw_error(Messages.MISSING_INSTALL_AND_CONFIG, engine_version, engine_config.value)
 
 		volumes[source_volume] = str(O3DE_ENGINE_SOURCE_DIR)
-		volumes[build_volume] = str(O3DE_ENGINE_BUILD_DIR)
+		volumes[build_volume] = str(O3DE_ENGINE_BUILDS_DIR)
 
 	elif engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK:
 		install_image = CONTAINER_CLIENT.get_image_name(Images.INSTALL_RUNNER, engine_version, engine_config)
@@ -922,8 +930,8 @@ def run_runner(engine_version, engine_config, engine_workflow, project_dir, exte
 			install_volume = CONTAINER_CLIENT.get_volume_name(Volumes.INSTALL, engine_version)
 			install_dir = CONTAINER_CLIENT.get_volume_path(install_volume)
 
-			if not has_install_config(install_dir, engine_config):
-				throw_error(Messages.MISSING_INSTALL_AND_CONFIG, engine_version, engine_config.value)
+			if not has_install_config(install_dir, engine_config, engine_variant):
+				throw_error(Messages.MISSING_INSTALL_AND_CONFIG, engine_version, engine_config.value, engine_variant.value)
 
 			volumes[install_volume] = str(O3DE_ENGINE_INSTALL_DIR)
 
@@ -1034,8 +1042,8 @@ def apply_engine_updates(engine_version, rebuild):
 		throw_error(Messages.ENGINE_SOURCE_NOT_FOUND, source_volume)
 
 	build_volume = CONTAINER_CLIENT.get_volume_name(Volumes.BUILD, engine_version)
-	build_dir = CONTAINER_CLIENT.get_volume_path(build_volume)
-	if build_dir is None:
+	builds_dir = CONTAINER_CLIENT.get_volume_path(build_volume)
+	if builds_dir is None:
 		throw_error(Messages.ENGINE_BUILD_NOT_FOUND, build_volume)
 
 	install_volume = CONTAINER_CLIENT.get_volume_name(Volumes.INSTALL, engine_version)
@@ -1044,17 +1052,18 @@ def apply_engine_updates(engine_version, rebuild):
 		throw_error(Messages.ENGINE_INSTALL_NOT_FOUND, install_volume)
 
 	installed_configs = []
-	for engine_config in O3DE_Configs:
-		install_builder_image = CONTAINER_CLIENT.get_image_name(Images.INSTALL_BUILDER, engine_version, engine_config)
-		install_runner_image = CONTAINER_CLIENT.get_image_name(Images.INSTALL_RUNNER, engine_version, engine_config)
+	for engine_variant in O3DE_Variants:
+		for engine_config in O3DE_Configs:
+			install_builder_image = CONTAINER_CLIENT.get_image_name(Images.INSTALL_BUILDER, engine_version, engine_config)
+			install_runner_image = CONTAINER_CLIENT.get_image_name(Images.INSTALL_RUNNER, engine_version, engine_config)
 
-		if (
-			has_build_config(build_dir, engine_config) or
-		   	has_install_config(install_dir, engine_config) or
-		   	CONTAINER_CLIENT.image_exists(install_builder_image) or
-		   	CONTAINER_CLIENT.image_exists(install_runner_image)
-		):
-			installed_configs.append(engine_config)
+			if (
+				has_build_config(get_build_path(builds_dir, engine_variant), engine_config) or
+				has_install_config(install_dir, engine_config, engine_variant) or
+				CONTAINER_CLIENT.image_exists(install_builder_image) or
+				CONTAINER_CLIENT.image_exists(install_runner_image)
+			):
+				installed_configs.append([ engine_config, engine_variant ])
 
 	upgraded = run_updater(engine_version, UpdaterCommands.UPGRADE, Targets.ENGINE)
 	if not upgraded:
@@ -1132,7 +1141,7 @@ def apply_engine_updates(engine_version, rebuild):
 		print_msg(Level.INFO, resume_command)
 
 
-def install_engine(repository, engine_version, engine_config, engine_workflow, force = False, incremental = False, save_images = False):
+def install_engine(repository, engine_version, engine_config, engine_variant, engine_workflow, force = False, incremental = False, save_images = False):
 	repository_protocol, repository_url, repository_reference = parse_repository_url(repository)
 
 	if engine_workflow is not O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK:
@@ -1184,7 +1193,7 @@ def install_engine(repository, engine_version, engine_config, engine_workflow, f
 	initialize_volumes(required_volumes, resume_command, force)
 
 	source_dir = CONTAINER_CLIENT.get_volume_path(source_volume)
-	build_dir = CONTAINER_CLIENT.get_volume_path(build_volume)
+	build_dir = get_build_path(CONTAINER_CLIENT.get_volume_path(build_volume), engine_variant)
 	install_dir = CONTAINER_CLIENT.get_volume_path(install_volume)
 	packages_dir = CONTAINER_CLIENT.get_volume_path(packages_volume)
 
@@ -1197,11 +1206,11 @@ def install_engine(repository, engine_version, engine_config, engine_workflow, f
 
 			if engine_workflow is O3DE_BuildWorkflows.ENGINE_CENTRIC:
 				if has_build_config(build_dir, engine_config):
-					throw_error(Messages.INSTALL_AND_CONFIG_ALREADY_EXISTS, engine_version, engine_config.value)
+					throw_error(Messages.INSTALL_AND_CONFIG_ALREADY_EXISTS, engine_version, engine_config.value, engine_variant.value)
 
 			elif engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK:
-				if has_install_config(install_dir, engine_config):
-					throw_error(Messages.INSTALL_AND_CONFIG_ALREADY_EXISTS, engine_version, engine_config.value)			
+				if has_install_config(install_dir, engine_config, engine_variant):
+					throw_error(Messages.INSTALL_AND_CONFIG_ALREADY_EXISTS, engine_version, engine_config.value, engine_variant.value)			
 
 			elif engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SOURCE:
 				throw_error(Messages.INSTALL_ALREADY_EXISTS, Targets.ENGINE.value.capitalize(), engine_version)
@@ -1236,16 +1245,16 @@ def install_engine(repository, engine_version, engine_config, engine_workflow, f
 	if not RUN_CONTAINERS:
 		check_requirements(resume_command)
 
-	initialized = run_builder(engine_version, None, None, None, BuilderCommands.INIT, Targets.ENGINE, engine_workflow)
+	initialized = run_builder(engine_version, None, None, None, BuilderCommands.INIT, Targets.ENGINE, engine_variant, engine_workflow)
 	if not initialized:
 		throw_error(Messages.UNCOMPLETED_INSTALL)
 
-	built = run_builder(engine_version, None, None, None, BuilderCommands.BUILD, Targets.ENGINE, engine_config, engine_workflow)
+	built = run_builder(engine_version, None, None, None, BuilderCommands.BUILD, Targets.ENGINE, engine_config, engine_variant, engine_workflow)
 	if not built:
 		throw_error(Messages.UNCOMPLETED_INSTALL)
 
 	if not incremental and (engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK):
-		run_builder(engine_version, None, None, None, BuilderCommands.CLEAN, Targets.ENGINE, engine_config, True, False)
+		run_builder(engine_version, None, None, None, BuilderCommands.CLEAN, Targets.ENGINE, engine_config, engine_variant, True, False)
 
 	install_builder_image = CONTAINER_CLIENT.get_image_name(Images.INSTALL_BUILDER, engine_version, engine_config)
 	install_runner_image = CONTAINER_CLIENT.get_image_name(Images.INSTALL_RUNNER, engine_version, engine_config)
@@ -1272,9 +1281,9 @@ def install_engine(repository, engine_version, engine_config, engine_workflow, f
 			try:
 				new_container = CONTAINER_CLIENT.run_container(ContainerRunMode.STANDBY, from_image, network_disabled = True)
 
-				config_dir = get_install_config_path(O3DE_ENGINE_INSTALL_DIR, engine_config)
+				bin_dir = get_install_bin_path(O3DE_ENGINE_INSTALL_DIR, engine_config)
 
-				executed = CONTAINER_CLIENT.exec_in_container(new_container, [ "mkdir", "--parents", config_dir ])
+				executed = CONTAINER_CLIENT.exec_in_container(new_container, [ "mkdir", "--parents", bin_dir ])
 				if not executed:
 					throw_error(Messages.ERROR_SAVE_IMAGE, new_image_name)
 
@@ -1286,7 +1295,7 @@ def install_engine(repository, engine_version, engine_config, engine_workflow, f
 					if not copied:
 						throw_error(Messages.ERROR_SAVE_IMAGE, new_image_name)
 
-				copied = CONTAINER_CLIENT.copy_to_container(new_container, install_dir / config_dir.relative_to(O3DE_ENGINE_INSTALL_DIR), config_dir, content_only = True)
+				copied = CONTAINER_CLIENT.copy_to_container(new_container, install_dir / bin_dir.relative_to(O3DE_ENGINE_INSTALL_DIR), bin_dir, content_only = True)
 				if not copied:
 					throw_error(Messages.ERROR_SAVE_IMAGE, new_image_name)
 
@@ -1315,18 +1324,18 @@ def install_engine(repository, engine_version, engine_config, engine_workflow, f
 					new_container.kill()
 
 		if not incremental:
-			run_builder(engine_version, None, None, None, BuilderCommands.CLEAN, Targets.ENGINE, engine_config, False, True)
+			run_builder(engine_version, None, None, None, BuilderCommands.CLEAN, Targets.ENGINE, engine_config, engine_variant, False, True)
 
 	else:
 		CONTAINER_CLIENT.remove_image(install_builder_image)
 		CONTAINER_CLIENT.remove_image(install_runner_image)
 
 
-def install_missing_engine(project_dir, engine_url, engine_version, engine_config, engine_workflow):
+def install_missing_engine(project_dir, engine_url, engine_version, engine_config, engine_variant, engine_workflow):
 	if engine_version is None:
 		print_msg(Level.INFO, Messages.MISSING_INSTALL_ENGINE, engine_url)
 	else:
-		print_msg(Level.INFO, Messages.MISSING_INSTALL_ENGINE_CONFIG, engine_version, engine_config.value)
+		print_msg(Level.INFO, Messages.MISSING_INSTALL_ENGINE_CONFIG, engine_version, engine_config.value, engine_variant.value)
 
 	if not ask_for_confirmation(Messages.INSTALL_QUESTION):
 		exit(1)
@@ -1345,7 +1354,7 @@ def install_missing_engine(project_dir, engine_url, engine_version, engine_confi
 
 	check_updater()
 
-	install_engine(engine_url, engine_version, engine_config, engine_workflow)
+	install_engine(engine_url, engine_version, engine_config, engine_variant, engine_workflow)
 
 
 def install_missing_gem(project_dir, gem_index, gem_url):
@@ -1375,7 +1384,7 @@ def list_engines():
 	MAX_LENGTHS_VERSION=20
 	MAX_LENGTHS_SIZE=10
 	MAX_LENGTHS_WORKFLOW=19
-	MAX_LENGTHS_CONFIG=7
+	MAX_LENGTHS_CONFIG=10
 
 	table_row = "{:<" + str(MAX_LENGTHS_VERSION) + "} {:^" + str(MAX_LENGTHS_SIZE) + "}"
 
@@ -1401,8 +1410,8 @@ def list_engines():
 			source_size = calculate_size(source_dir)
 
 			build_volume = CONTAINER_CLIENT.get_volume_name(Volumes.BUILD, engine_version)
-			build_dir = CONTAINER_CLIENT.get_volume_path(build_volume)
-			build_size = calculate_size(build_dir)
+			builds_dir = CONTAINER_CLIENT.get_volume_path(build_volume)
+			build_size = calculate_size(builds_dir)
 
 			install_volume = CONTAINER_CLIENT.get_volume_name(Volumes.INSTALL, engine_version)
 			install_dir = CONTAINER_CLIENT.get_volume_path(install_volume)
@@ -1418,21 +1427,36 @@ def list_engines():
 			for config in O3DE_Configs:
 				install_image = CONTAINER_CLIENT.get_image_name(Volumes.INSTALL, engine_version, config)
 
-				config_exists = False
-				if has_install_config(install_dir, config) or CONTAINER_CLIENT.image_exists(install_image):
-					config_exists = True
-					engine_workflow = O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK
+				installed_variants = []
+				for variant in O3DE_Variants:
+					config_exists = False
 
-				elif has_build_config(build_dir, config):
-					config_exists = True
-					if engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SOURCE:
-						engine_workflow = O3DE_BuildWorkflows.ENGINE_CENTRIC
+					if (
+						has_install_config(install_dir, config, variant) or
+						CONTAINER_CLIENT.image_exists(install_image)
+					):
+						config_exists = True
+						engine_workflow = O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK
 
-				mark = 'x' if config_exists else ''
+					elif has_build_config(get_build_path(builds_dir, variant), config):
+						config_exists = True
+						if engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SOURCE:
+							engine_workflow = O3DE_BuildWorkflows.ENGINE_CENTRIC
+
+					if config_exists:
+						installed_variants.append(variant)
+
+				if len(installed_variants) == 0:
+					mark = ''
+				elif len(installed_variants) == 1:
+					mark = "Monolit." if installed_variants[0] is O3DE_Variants.MONOLITHIC else "Non-Mon."
+				else:
+					mark = "Both"
+
 				installed_configs.append(mark)
 
 			if engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SOURCE:
-				installed_configs = ['x' for config in O3DE_Configs]
+				installed_configs = ['Any' for config in O3DE_Configs]
 
 			print(engines_row.format(
 				engine_version if len(engine_version) <= MAX_LENGTHS_VERSION else (engine_version[0:MAX_LENGTHS_VERSION-3] + "..."),
@@ -1483,7 +1507,7 @@ def search_engine_updates(engine_version):
 	run_updater(engine_version, UpdaterCommands.REFRESH, Targets.ENGINE)
 
 
-def uninstall_engine(engine_version, engine_config = None, force = False):
+def uninstall_engine(engine_version, engine_config = None, engine_variant = None, force = False):
 	source_volume = CONTAINER_CLIENT.get_volume_name(Volumes.SOURCE, engine_version)
 	if not force and not CONTAINER_CLIENT.volume_exists(source_volume):
 		throw_error(Messages.VERSION_NOT_INSTALLED, engine_version)
@@ -1504,13 +1528,13 @@ def uninstall_engine(engine_version, engine_config = None, force = False):
 			CONTAINER_CLIENT.remove_image(install_runner_image)
 
 	else:
-		build_dir = CONTAINER_CLIENT.get_volume_path(build_volume)
+		build_dir = get_build_path(CONTAINER_CLIENT.get_volume_path(build_volume), engine_variant)
 		install_dir = CONTAINER_CLIENT.get_volume_path(install_volume)
 
 		no_config = True
 
-		if has_build_config(build_dir, engine_config) or has_install_config(install_dir, engine_config):
-			run_builder(engine_version, None, None, None, BuilderCommands.CLEAN, Targets.ENGINE, engine_config, True, True)
+		if has_build_config(build_dir, engine_config) or has_install_config(install_dir, engine_config, engine_variant):
+			run_builder(engine_version, None, None, None, BuilderCommands.CLEAN, Targets.ENGINE, engine_config, engine_variant, True, True)
 			no_config = False
 		
 		install_builder_image = CONTAINER_CLIENT.get_image_name(Images.INSTALL_BUILDER, engine_version, engine_config)
@@ -1549,15 +1573,16 @@ def add_gem_to_project(project_dir, gem_reference, rebuild):
 	added = run_builder(engine_version, None, project_dir, external_gem_dirs, BuilderCommands.SETTINGS, Targets.PROJECT, Settings.GEMS.value, -1, None, gem_value, False, False, False)
 
 	if added and rebuild:
-		project_build_dir = get_build_path(project_dir, OPERATING_SYSTEM)
+		engine_variant = O3DE_Variants.NON_MONOLITHIC
+		project_build_dir = get_build_path(get_builds_root_path(project_dir), engine_variant, OPERATING_SYSTEM)
 
 		print_msg(Level.INFO, Messages.ADD_GEM_REBUILD, gem_value)
 
-		for config in O3DE_Configs:
-			if not has_build_config(project_build_dir, config):
+		for engine_config in [ O3DE_Configs.DEBUG, O3DE_Configs.PROFILE ]:
+			if not has_build_config(project_build_dir, engine_config):
 				continue
 
-			built = run_builder(engine_version, config, project_dir, external_gem_dirs, BuilderCommands.BUILD, Targets.PROJECT, config, O3DE_ProjectBinaries.TOOLS, True)
+			built = run_builder(engine_version, engine_config, project_dir, external_gem_dirs, BuilderCommands.BUILD, Targets.PROJECT, engine_config, engine_variant, O3DE_ProjectBinaries.TOOLS, True)
 			if not built:
 				throw_error(Messages.UNCOMPLETED_BUILD_PROJECT)
 
@@ -1629,15 +1654,16 @@ def remove_gem_from_project(project_dir, gem_reference, rebuild):
 	removed = run_builder(engine_version, None, project_dir, external_gem_dirs, BuilderCommands.SETTINGS, Targets.PROJECT, Settings.GEMS.value, gem_index, None, gem_value, clear_option, False, False)
 
 	if removed and rebuild:
-		project_build_dir = get_build_path(project_dir, OPERATING_SYSTEM)
+		engine_variant = O3DE_Variants.NON_MONOLITHIC
+		project_build_dir = get_build_path(get_builds_root_path(project_dir), engine_variant, OPERATING_SYSTEM)
 
 		print_msg(Level.INFO, Messages.REMOVE_GEM_REBUILD, gem_index)
 
-		for config in O3DE_Configs:
-			if not has_build_config(project_build_dir, config):
+		for engine_config in [ O3DE_Configs.DEBUG, O3DE_Configs.PROFILE ]:
+			if not has_build_config(project_build_dir, engine_config):
 				continue
 
-			built = run_builder(engine_version, config, project_dir, external_gem_dirs, BuilderCommands.BUILD, Targets.PROJECT, config, O3DE_ProjectBinaries.TOOLS, True)
+			built = run_builder(engine_version, engine_config, project_dir, external_gem_dirs, BuilderCommands.BUILD, Targets.PROJECT, engine_config, engine_variant, O3DE_ProjectBinaries.TOOLS, True)
 			if not built:
 				throw_error(Messages.UNCOMPLETED_BUILD_PROJECT)
 
@@ -1734,16 +1760,16 @@ def create_project(engine_version, project_dir, project_name = None, base_templa
 		print_msg(Level.INFO, Messages.INIT_COMPLETED, get_real_project_dir() if CONTAINER_CLIENT.is_in_container() else project_dir)
 
 
-def build_project(project_dir, binary, config):
-	engine_version, was_config_missing, not_used, external_gem_dirs = check_project_dependencies(project_dir, config)
+def build_project(project_dir, binary, config, variant):
+	engine_version, was_config_missing, not_used, external_gem_dirs = check_project_dependencies(project_dir, config, variant)
 
-	run_builder(engine_version, config, project_dir, external_gem_dirs, BuilderCommands.BUILD, Targets.PROJECT, config, binary, was_config_missing)
+	run_builder(engine_version, config, project_dir, external_gem_dirs, BuilderCommands.BUILD, Targets.PROJECT, config, variant, binary, was_config_missing)
 
 
-def clean_project(project_dir, config, remove_build, remove_cache, force = False):
-	engine_version, not_used, not_used, external_gem_dirs = check_project_dependencies(project_dir, config if not force else None)
+def clean_project(project_dir, config, variant, remove_build, remove_cache, force = False):
+	engine_version, not_used, not_used, external_gem_dirs = check_project_dependencies(project_dir, config if not force else None, variant if not force else None)
 
-	run_builder(engine_version, config, project_dir, external_gem_dirs, BuilderCommands.CLEAN, Targets.PROJECT, config, remove_build, remove_cache, force)
+	run_builder(engine_version, config, project_dir, external_gem_dirs, BuilderCommands.CLEAN, Targets.PROJECT, config, variant, remove_build, remove_cache, force)
 
 
 def manage_project_settings(project_dir, setting_key_section , setting_key_index, setting_key_name, setting_value, clear):
@@ -1765,7 +1791,7 @@ def open_project(project_dir, engine_config = None, new_engine_version = None, e
 		if engine_config is None:
 			throw_error(Messages.VERSION_NOT_FOUND, engine_version)
 
-	not_used, was_config_missing, engine_workflow, not_used = check_project_dependencies(project_dir, engine_config, check_gems = False)
+	not_used, was_config_missing, engine_workflow, not_used = check_project_dependencies(project_dir, engine_config, O3DE_Variants.NON_MONOLITHIC, check_gems = False)
 
 	if new_engine_version is not None:
 		run_builder(engine_version, None, project_dir, None, BuilderCommands.SETTINGS, Targets.PROJECT, Settings.ENGINE.value, None, None, new_engine_version, False, True, False)
@@ -1782,17 +1808,17 @@ def open_project(project_dir, engine_config = None, new_engine_version = None, e
 		throw_error(Messages.INVALID_BUILD_WORKFLOW, engine_workflow)
 
 	if is_project_centric:
-		build_dir = get_build_path(project_dir)
+		build_dir = get_build_path(get_builds_root_path(project_dir))
 	else:
 		build_volume = CONTAINER_CLIENT.get_volume_name(Volumes.BUILD, engine_version)
-		build_dir = CONTAINER_CLIENT.get_volume_path(build_volume)
+		build_dir = get_build_path(CONTAINER_CLIENT.get_volume_path(build_volume))
 
-	config_build_dir = get_build_config_path(build_dir, engine_config)
-	project_library_file = config_build_dir / get_library_filename("lib" + project_name)
+	bin_build_dir = get_build_bin_path(build_dir, engine_config)
+	project_library_file = bin_build_dir / get_library_filename("lib" + project_name)
 
 	if not project_library_file.is_file():
 		if is_project_centric:
-			built = run_builder(engine_version, engine_config, project_dir, external_gem_dirs, BuilderCommands.BUILD, Targets.PROJECT, engine_config, O3DE_ProjectBinaries.TOOLS, was_config_missing)
+			built = run_builder(engine_version, engine_config, project_dir, external_gem_dirs, BuilderCommands.BUILD, Targets.PROJECT, engine_config, O3DE_Variants.NON_MONOLITHIC, O3DE_ProjectBinaries.TOOLS, was_config_missing)
 			if not built:
 				throw_error(Messages.UNCOMPLETED_BUILD_PROJECT)
 		else:
@@ -1805,10 +1831,10 @@ def open_project(project_dir, engine_config = None, new_engine_version = None, e
 		if NETWORK_NAME is None:
 			exec_in_runner(asset_processor_container, container_command)
 		else:
-			run_runner(engine_version, engine_config, engine_workflow, project_dir, external_gem_dirs, True, *container_command)
+			run_runner(engine_version, engine_config, O3DE_Variants.NON_MONOLITHIC, engine_workflow, project_dir, external_gem_dirs, True, *container_command)
 
 
-def run_project(project_dir, binary, config, level_name = None, console_commands = None, console_variables = None, connect_to_server = False, listen_on_port = None):
+def run_project(project_dir, binary, config, variant, level_name = None, console_commands = None, console_variables = None, connect_to_server = False, listen_on_port = None):
 	engine_version, not_used, engine_workflow, external_gem_dirs = check_project_dependencies(project_dir)
 
 	if not binary in [ O3DE_ProjectBinaries.CLIENT, O3DE_ProjectBinaries.SERVER]:
@@ -1885,13 +1911,13 @@ def run_project(project_dir, binary, config, level_name = None, console_commands
 		level_command = "LoadLevel[{}]".format(level_path.with_suffix(".spawnable"))
 		console_commands.insert(0, level_command)
 
-	asset_processor_container = check_asset_processor(engine_version, config, engine_workflow, project_dir, external_gem_dirs)
+	asset_processor_container = check_asset_processor(engine_version, config, engine_workflow, project_dir, external_gem_dirs) if config is not O3DE_Configs.RELEASE else None
 
-	container_command = [ RunnerCommands.RUN, binary, config, console_commands, console_variables ]
-	if NETWORK_NAME is None:
+	container_command = [ RunnerCommands.RUN, binary, config, variant, console_commands, console_variables ]
+	if NETWORK_NAME is None and asset_processor_container is not None:
 		exec_in_runner(asset_processor_container, container_command)
 	else:	
-		run_runner(engine_version, config, engine_workflow, project_dir, external_gem_dirs, True, *container_command)
+		run_runner(engine_version, config, variant, engine_workflow, project_dir, external_gem_dirs, True, *container_command)
 
 
 # --- CLI HANDLER (GENERIC) ---
@@ -1914,7 +1940,7 @@ def handle_version_command():
 
 # --- CLI HANDLER (ENGINE) ---
 
-def handle_install_engine_command(version_name, engine_config_name, repository, fork, branch, tag, commit, engine_workflow_name, force, incremental, save_images, **kwargs):
+def handle_install_engine_command(version_name, engine_config_name, engine_variant_name, repository, fork, branch, tag, commit, engine_workflow_name, force, incremental, save_images, **kwargs):
 	repository_url = generate_repository_url(repository, fork, branch, tag, commit, default_repository = O3DE_REPOSITORY_URL)
 
 	if version_name is not None:
@@ -1953,6 +1979,10 @@ def handle_install_engine_command(version_name, engine_config_name, repository, 
 	if engine_config is None:
 		throw_error(Messages.INVALID_CONFIG, engine_config_name)
 
+	engine_variant = O3DE_Variants.from_value(engine_variant_name)
+	if engine_variant is None:
+		throw_error(Messages.INVALID_VARIANT, engine_variant_name)
+
 	engine_workflow = O3DE_BuildWorkflows.from_value(engine_workflow_name)
 	if engine_workflow is None:
 		throw_error(Messages.INVALID_BUILD_WORKFLOW, engine_workflow_name)
@@ -1964,7 +1994,7 @@ def handle_install_engine_command(version_name, engine_config_name, repository, 
 		if save_images is not False:
 			check_runner()
 
-		install_engine(repository_url, engine_version, engine_config, engine_workflow, force, incremental, save_images)
+		install_engine(repository_url, engine_version, engine_config, engine_variant, engine_workflow, force, incremental, save_images)
 		print_msg(Level.INFO, Messages.INSTALL_ENGINE_COMPLETED, engine_version)
 
 	finally:
@@ -1994,7 +2024,7 @@ def handle_refresh_engine_command(engine_version):
 		close_container_client()
 
 
-def handle_uninstall_engine_command(engine_version, engine_config_name, force):
+def handle_uninstall_engine_command(engine_version, engine_config_name, engine_variant_name, force):
 	if not is_engine_version(engine_version):
 		throw_error(Messages.INVALID_VERSION, engine_version)
 
@@ -2005,10 +2035,17 @@ def handle_uninstall_engine_command(engine_version, engine_config_name, force):
 	else:
 		engine_config = None
 
+	if engine_variant_name is not None:
+		engine_variant = O3DE_Variants.from_value(engine_variant_name)
+		if engine_variant is None:
+			throw_error(Messages.INVALID_VARIANT, engine_variant_name)
+	else:
+		engine_variant = None
+
 	try:
 		check_container_client()
 	
-		uninstall_engine(engine_version, engine_config, force)
+		uninstall_engine(engine_version, engine_config, engine_variant, force)
 
 	finally:
 		close_container_client()
@@ -2200,7 +2237,7 @@ def parse_project_path(value):
 	return project_dir
 
 
-def handle_build_command(project_path, binary_name, config_name):
+def handle_build_command(project_path, binary_name, config_name, variant_name):
 	binary = O3DE_ProjectBinaries.from_value(binary_name)
 	if binary is None:
 		if binary_name == CliSubCommands.ASSETS.value:
@@ -2211,6 +2248,10 @@ def handle_build_command(project_path, binary_name, config_name):
 	config = O3DE_Configs.from_value(config_name)
 	if config is None:
 		throw_error(Messages.INVALID_CONFIG, config_name)
+
+	variant = O3DE_Variants.from_value(variant_name)
+	if variant is None:
+		throw_error(Messages.INVALID_VARIANT, variant_name)
 
 	project_dir = parse_project_path(project_path)
 	if not project_dir.is_dir():
@@ -2224,7 +2265,7 @@ def handle_build_command(project_path, binary_name, config_name):
 		if isinstance(binary, O3DE_ProjectBinaries):
 			check_builder()
 
-			build_project(project_dir, binary, config)
+			build_project(project_dir, binary, config, variant)
 
 		elif isinstance(binary, O3DE_EngineBinaries):
 			check_runner()
@@ -2238,10 +2279,17 @@ def handle_build_command(project_path, binary_name, config_name):
 		close_container_client()
 
 
-def handle_clean_command(project_path, config_name, remove_build, remove_cache, force):
+def handle_clean_command(project_path, config_name, variant_name, remove_build, remove_cache, force):
 	config = O3DE_Configs.from_value(config_name)
 	if config is None:
 		throw_error(Messages.INVALID_CONFIG, config_name)
+
+	if variant_name is not None:
+		variant = O3DE_Variants.from_value(variant_name)
+		if variant is None:
+			throw_error(Messages.INVALID_VARIANT, variant_name)
+	else:
+		variant = None
 
 	project_dir = parse_project_path(project_path)
 	if not project_dir.is_dir():
@@ -2257,7 +2305,7 @@ def handle_clean_command(project_path, config_name, remove_build, remove_cache, 
 		check_container_client()
 		check_builder()
 
-		clean_project(project_dir, config, remove_build, remove_cache, force)
+		clean_project(project_dir, config, variant, remove_build, remove_cache, force)
 
 	finally:
 		close_container_client()
@@ -2311,7 +2359,7 @@ def handle_open_editor_command(project_path, engine_config_name, new_engine_vers
 		close_container_client()
 
 
-def handle_run_command(project_path, binary_name, config_name, level_name, console_commands, console_variables, connect_to_server, listen_on_port):
+def handle_run_command(project_path, binary_name, config_name, variant_name, level_name, console_commands, console_variables, connect_to_server, listen_on_port):
 	binary = O3DE_ProjectBinaries.from_value(binary_name)
 	if binary is None:
 		throw_error(Messages.INVALID_BINARY, binary_name)
@@ -2319,6 +2367,10 @@ def handle_run_command(project_path, binary_name, config_name, level_name, conso
 	config = O3DE_Configs.from_value(config_name)
 	if config is None:
 		throw_error(Messages.INVALID_CONFIG, config_name)
+
+	variant = O3DE_Variants.from_value(variant_name)
+	if variant is None:
+		throw_error(Messages.INVALID_VARIANT, variant_name)
 
 	project_dir = parse_project_path(project_path)
 	if not project_dir.is_dir():
@@ -2330,7 +2382,7 @@ def handle_run_command(project_path, binary_name, config_name, level_name, conso
 		check_container_client()
 		check_runner()
 
-		run_project(project_dir, binary, config, level_name, console_commands, console_variables, connect_to_server, listen_on_port)
+		run_project(project_dir, binary, config, variant, level_name, console_commands, console_variables, connect_to_server, listen_on_port)
 
 	finally:
 		close_container_client()
@@ -2411,6 +2463,7 @@ def main():
 	DESCRIPTIONS_COMMON_GEM_REFERENCE = "Version name of an installed gem, or path to its local workspace"
 	DESCRIPTIONS_COMMON_ENGINE = "Engine version"
 	DESCRIPTIONS_COMMON_PROJECT = "Path to the project root, instead of the current directory"
+	DESCRIPTIONS_COMMON_VARIANT = "Build variant: {}".format(", ".join([ variant.value for variant in O3DE_Variants ]))
 
 	DESCRIPTIONS_GLOBAL_QUIET = "Suppress all output messages (silent mode)"
 	DESCRIPTIONS_GLOBAL_VERBOSE = "Show additional messages (verbose mode)"
@@ -2426,6 +2479,7 @@ def main():
 	DESCRIPTIONS_INSTALL_ENGINE_CONFIG = DESCRIPTIONS_COMMON_CONFIG
 	DESCRIPTIONS_INSTALL_ENGINE_INCREMENTAL = "Keep intermediate files to speed up future upgrades (only for {})".format(print_option(LongOptions.WORKFLOW, O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK.value))
 	DESCRIPTIONS_INSTALL_ENGINE_SAVE_IMAGES = "Generate images containing the engine installation (only for {})".format(print_option(LongOptions.WORKFLOW, O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK.value))
+	DESCRIPTIONS_INSTALL_ENGINE_VARIANT = DESCRIPTIONS_COMMON_VARIANT
 	DESCRIPTIONS_INSTALL_ENGINE_WORKFLOW = "Build workflow: {}".format(", ".join([ workflow.value for workflow in O3DE_BuildWorkflows ]))
 	DESCRIPTIONS_INSTALL_ENGINE_WORKFLOW_ENGINE = "Build all projects in the engine (alias for: {})".format(print_option(LongOptions.WORKFLOW, O3DE_BuildWorkflows.ENGINE_CENTRIC.value))
 	DESCRIPTIONS_INSTALL_ENGINE_WORKFLOW_PROJECT = "Build the engine in each project (alias for: {})".format(print_option(LongOptions.WORKFLOW, O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SOURCE.value))
@@ -2447,6 +2501,7 @@ def main():
 	DESCRIPTIONS_UNINSTALL_ENGINE_VERSION = DESCRIPTIONS_COMMON_ENGINE
 	DESCRIPTIONS_UNINSTALL_ENGINE_CONFIG = "Uninstall only a specific {}".format(DESCRIPTIONS_COMMON_CONFIG.lower())
 	DESCRIPTIONS_UNINSTALL_ENGINE_FORCE = "Remove files even if the installation is corrupted"
+	DESCRIPTIONS_UNINSTALL_ENGINE_VARIANT = DESCRIPTIONS_COMMON_VARIANT
 	DESCRIPTIONS_UNINSTALL_GEM = "Uninstall a gem version"
 	DESCRIPTIONS_UNINSTALL_GEM_VERSION = DESCRIPTIONS_COMMON_GEM
 
@@ -2471,13 +2526,15 @@ def main():
 	DESCRIPTIONS_BUILD_CLIENT = "Build a runtime with full capabilities (input, sound, video)"
 	DESCRIPTIONS_BUILD_SERVER = "Build a runtime that can receive connections from other clients"
 	DESCRIPTIONS_BUILD_TOOLS = "Build libraries required by the editor"
-	
+	DESCRIPTIONS_BUILD_VARIANT = DESCRIPTIONS_COMMON_VARIANT
+
 	DESCRIPTIONS_CLEAN = "Remove all built project files (binaries and intermediates)"
 	DESCRIPTIONS_CLEAN_CONFIG = DESCRIPTIONS_COMMON_CONFIG
 	DESCRIPTIONS_CLEAN_FORCE = "Remove files even if the project is corrupted"
 	DESCRIPTIONS_CLEAN_PROJECT = DESCRIPTIONS_COMMON_PROJECT
 	DESCRIPTIONS_CLEAN_BUILD = "Remove built files (default)"
 	DESCRIPTIONS_CLEAN_CACHE = "Remove cached files"
+	DESCRIPTIONS_CLEAN_VARIANT = DESCRIPTIONS_COMMON_VARIANT
 
 	DESCRIPTIONS_INIT = "Create a new empty workspace"
 	DESCRIPTIONS_INIT_ALIAS = "Assign a project name, instead of the directory name"
@@ -2507,6 +2564,7 @@ def main():
 	DESCRIPTIONS_RUN_CONFIG = DESCRIPTIONS_COMMON_CONFIG
 	DESCRIPTIONS_RUN_LEVEL = "Start from a specific level"
 	DESCRIPTIONS_RUN_PROJECT = DESCRIPTIONS_COMMON_PROJECT
+	DESCRIPTIONS_RUN_VARIANT = DESCRIPTIONS_COMMON_VARIANT
 	DESCRIPTIONS_RUN_CLIENT = "Run an instance with full capabilities (input, sound and video)"
 	DESCRIPTIONS_RUN_CLIENT_CONNECT = "Connect to the primary server (or a specific one)"
 	DESCRIPTIONS_RUN_SERVER = "Run an instance that can accept connections from other clients"
@@ -2566,6 +2624,7 @@ def main():
 	install_engine_parser = install_subparsers.add_parser(CliSubCommands.ENGINE.value, parents = [ global_parser, install_common_parser ], help = DESCRIPTIONS_INSTALL_ENGINE)
 	install_engine_parser.set_defaults(handler = handle_install_engine_command)
 	install_engine_parser.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "engine_config_name", default = O3DE_DEFAULT_CONFIG.value, metavar = "<config>", help = DESCRIPTIONS_INSTALL_ENGINE_CONFIG)
+	install_engine_parser.add_argument(print_option(LongOptions.VARIANT), dest = "engine_variant_name", default = O3DE_DEFAULT_VARIANT.value, metavar = "<variant>", help = DESCRIPTIONS_INSTALL_ENGINE_VARIANT)
 	install_engine_parser.add_argument(print_option(LongOptions.INCREMENTAL), action = "store_true", help = DESCRIPTIONS_INSTALL_ENGINE_INCREMENTAL)
 	install_engine_parser.add_argument(print_option(LongOptions.SAVE_IMAGES), action = "store_true", help = DESCRIPTIONS_INSTALL_ENGINE_SAVE_IMAGES)
 
@@ -2610,6 +2669,7 @@ def main():
 	uninstall_engine_parser.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "engine_config_name", default = None, metavar = "<config>", help = DESCRIPTIONS_UNINSTALL_ENGINE_CONFIG)
 	uninstall_engine_parser.add_argument(print_option(ShortOptions.FORCE), print_option(LongOptions.FORCE), action = "store_true", help = DESCRIPTIONS_UNINSTALL_ENGINE_FORCE)
 	uninstall_engine_parser.add_argument("engine_version", metavar="version", help = DESCRIPTIONS_UNINSTALL_ENGINE_VERSION)
+	uninstall_engine_parser.add_argument(print_option(LongOptions.VARIANT), dest = "engine_variant_name", default = None, metavar = "<variant>", help = DESCRIPTIONS_UNINSTALL_ENGINE_VARIANT)
 
 	uninstall_gem_parser = uninstall_subparsers.add_parser(CliSubCommands.GEM.value, parents = [ global_parser ], help = DESCRIPTIONS_UNINSTALL_GEM)
 	uninstall_gem_parser.set_defaults(handler = handle_uninstall_gem_command)
@@ -2647,25 +2707,28 @@ def main():
 	build_common_parser = argparse.ArgumentParser(add_help = False)
 	build_common_parser.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "config_name", default = O3DE_DEFAULT_CONFIG.value, metavar = "<config>", help = DESCRIPTIONS_BUILD_CONFIG)
 	build_common_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PROJECT), dest = "project_path", metavar = "<path>", help = DESCRIPTIONS_BUILD_PROJECT)
+	build_binaries_parser = argparse.ArgumentParser(add_help = False)
+	build_binaries_parser.add_argument(print_option(LongOptions.VARIANT), dest = "variant_name", default = O3DE_DEFAULT_VARIANT.value, metavar = "<variant>", help = DESCRIPTIONS_BUILD_VARIANT)
 	build_subparsers = build_parser.add_subparsers()
 
 	build_assets_parser = build_subparsers.add_parser(CliSubCommands.ASSETS.value, parents = [ global_parser, build_common_parser ], help = DESCRIPTIONS_BUILD_ASSETS)
-	build_assets_parser.set_defaults(binary_name = CliSubCommands.ASSETS.value)
+	build_assets_parser.set_defaults(binary_name = CliSubCommands.ASSETS.value, variant_name = O3DE_DEFAULT_VARIANT.value)
 
-	build_client_parser = build_subparsers.add_parser(O3DE_ProjectBinaries.CLIENT.value, parents = [ global_parser, build_common_parser ], help = DESCRIPTIONS_BUILD_CLIENT)
+	build_client_parser = build_subparsers.add_parser(O3DE_ProjectBinaries.CLIENT.value, parents = [ global_parser, build_common_parser, build_binaries_parser ], help = DESCRIPTIONS_BUILD_CLIENT)
 	build_client_parser.set_defaults(binary_name = O3DE_ProjectBinaries.CLIENT.value)
 
-	build_server_parser = build_subparsers.add_parser(O3DE_ProjectBinaries.SERVER.value, parents = [ global_parser, build_common_parser ], help = DESCRIPTIONS_BUILD_SERVER)
+	build_server_parser = build_subparsers.add_parser(O3DE_ProjectBinaries.SERVER.value, parents = [ global_parser, build_common_parser, build_binaries_parser ], help = DESCRIPTIONS_BUILD_SERVER)
 	build_server_parser.set_defaults(binary_name = O3DE_ProjectBinaries.SERVER.value)
 
 	build_tools_parser = build_subparsers.add_parser(O3DE_ProjectBinaries.TOOLS.value, parents = [ global_parser, build_common_parser ], help = DESCRIPTIONS_BUILD_TOOLS)
-	build_tools_parser.set_defaults(binary_name = O3DE_ProjectBinaries.TOOLS.value)
+	build_tools_parser.set_defaults(binary_name = O3DE_ProjectBinaries.TOOLS.value, variant_name = O3DE_DEFAULT_VARIANT.value)
 
 	clean_parser = subparsers.add_parser(CliCommands.CLEAN.value, parents = [ global_parser ], help = DESCRIPTIONS_CLEAN)
 	clean_parser.set_defaults(handler = handle_clean_command)
 	clean_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PROJECT), dest = "project_path", metavar = "<path>", help = DESCRIPTIONS_CLEAN_PROJECT)
 	clean_parser.add_argument(print_option(LongOptions.BUILD), dest = "remove_build", action = "store_true", help = DESCRIPTIONS_CLEAN_BUILD)
 	clean_parser.add_argument(print_option(LongOptions.CACHE), dest = "remove_cache", action = "store_true", help = DESCRIPTIONS_CLEAN_CACHE)
+	clean_parser.add_argument(print_option(LongOptions.VARIANT), dest = "variant_name", default = None, metavar = "<variant>", help = DESCRIPTIONS_CLEAN_VARIANT)
 
 	clean_group = clean_parser.add_mutually_exclusive_group()
 	clean_group.add_argument(print_option(ShortOptions.CONFIG), print_option(LongOptions.CONFIG), dest = "config_name", default = O3DE_DEFAULT_CONFIG.value, metavar = "<config>", help = DESCRIPTIONS_CLEAN_CONFIG)
@@ -2718,6 +2781,7 @@ def main():
 	run_common_parser.add_argument(print_option(ShortOptions.CONSOLE_VARIABLE), print_option(LongOptions.CONSOLE_VARIABLE), dest = "console_variables", action = "append", metavar = "<variable>=<value>", help = DESCRIPTIONS_RUN_CONSOLE_VARIABLE)
 	run_common_parser.add_argument(print_option(ShortOptions.LEVEL), print_option(LongOptions.LEVEL), dest = "level_name", metavar = "<level>", help = DESCRIPTIONS_RUN_LEVEL)
 	run_common_parser.add_argument(print_option(ShortOptions.PROJECT), print_option(LongOptions.PROJECT), dest = "project_path", metavar = "<path>", help = DESCRIPTIONS_RUN_PROJECT)
+	run_common_parser.add_argument(print_option(LongOptions.VARIANT), dest = "variant_name", default = O3DE_DEFAULT_VARIANT.value, metavar = "<variant>", help = DESCRIPTIONS_RUN_VARIANT)
 	run_subparsers = run_parser.add_subparsers()
 
 	run_client_parser = run_subparsers.add_parser(O3DE_ProjectBinaries.CLIENT.value, parents = [ global_parser, run_common_parser ], help = DESCRIPTIONS_RUN_CLIENT)
