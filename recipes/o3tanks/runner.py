@@ -74,11 +74,13 @@ def get_default_instance_port(binary):
 
 def get_engine_binary(engine_config, engine_workflow, binary_name):
 	if engine_workflow is O3DE_BuildWorkflows.ENGINE_CENTRIC:
-		binary_dir = get_build_config_path(O3DE_ENGINE_BUILD_DIR, engine_config)
+		engine_build_dir = get_build_path(O3DE_ENGINE_BUILDS_DIR, O3DE_Variants.NON_MONOLITHIC)
+		binary_dir = get_build_bin_path(engine_build_dir, engine_config)
 	elif engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK:
-		binary_dir = get_install_config_path(O3DE_ENGINE_INSTALL_DIR, engine_config)
+		binary_dir = get_install_bin_path(O3DE_ENGINE_INSTALL_DIR, engine_config, O3DE_Variants.NON_MONOLITHIC)
 	elif engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SOURCE:
-		binary_dir = get_build_config_path(O3DE_PROJECT_BUILD_DIR, engine_config)
+		project_build_dir = get_build_path(O3DE_PROJECT_BUILDS_DIR, O3DE_Variants.NON_MONOLITHIC)
+		binary_dir = get_build_bin_path(project_build_dir, engine_config)
 	else:
 		throw_error(Messages.INVALID_BUILD_WORKFLOW, engine_workflow)
 
@@ -94,11 +96,15 @@ def get_instance_lock_path(binary):
 		throw_error(Messages.INVALID_BINARY, binary)
 
 
-def get_project_binary(engine_config, engine_workflow, binary_name):
+def get_project_binary(engine_config, engine_variant, engine_workflow, binary_name):
 	if engine_workflow is O3DE_BuildWorkflows.ENGINE_CENTRIC:
-		binary_dir = get_build_config_path(O3DE_ENGINE_BUILD_DIR, engine_config)
+		engine_build_dir = get_build_path(O3DE_ENGINE_BUILDS_DIR, engine_variant)
+		binary_dir = get_build_bin_path(engine_build_dir, engine_config)
+
 	elif engine_workflow in [ O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK, O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SOURCE ]:
-		binary_dir = get_build_config_path(O3DE_PROJECT_BUILD_DIR, engine_config)
+		project_build_dir = get_build_path(O3DE_PROJECT_BUILDS_DIR, engine_variant)
+		binary_dir = get_build_bin_path(project_build_dir, engine_config)
+
 	else:
 		throw_error(Messages.INVALID_BUILD_WORKFLOW, engine_workflow)
 
@@ -144,18 +150,7 @@ def register_instance(binary, port, randomize_if_exists):
 
 
 def run_binary(engine_workflow, binary_file, options = {}, arguments = [], rendering = False, wait = True):
-	if engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK:
-		engine_dir = O3DE_ENGINE_INSTALL_DIR
-	else:
-		engine_dir = O3DE_ENGINE_SOURCE_DIR
-
-	command = [
-		str(binary_file),
-		"--engine-path={}".format(engine_dir),
-		"--project-path={}".format(O3DE_PROJECT_SOURCE_DIR),
-		"--regset=/Amazon/AzCore/Bootstrap/engine_path={}".format(engine_dir),
-		"--regset=/Amazon/AzCore/Bootstrap/project_path={}".format(O3DE_PROJECT_SOURCE_DIR)
-	]
+	command = [ str(binary_file) ]
 
 	if rendering and (GPU_DRIVER_NAME is None):
 		command.append("--rhi=null")
@@ -191,10 +186,12 @@ def open_project(binary, config, force):
 	else:
 		throw_error(Messages.INVALID_BINARY, binary.value)
 
-	engine_workflow = get_build_workflow(O3DE_ENGINE_SOURCE_DIR, O3DE_ENGINE_BUILD_DIR, O3DE_ENGINE_INSTALL_DIR)
+	engine_variant = O3DE_Variants.NON_MONOLITHIC
+	engine_build_dir = get_build_path(O3DE_ENGINE_BUILDS_DIR, engine_variant)
+	engine_workflow = get_build_workflow(O3DE_ENGINE_SOURCE_DIR, engine_build_dir, O3DE_ENGINE_INSTALL_DIR)
 	binary_file = get_engine_binary(config, engine_workflow, binary_name)
 	if not binary_file.is_file():
-		throw_error(Messages.MISSING_BINARY, str(binary_file), config.value, "")
+		throw_error(Messages.MISSING_BINARY, str(binary_file), config.value, engine_variant.value, "")
 
 	asset_processor = discover_instance(O3DE_EngineBinaries.ASSET_PROCESSOR)
 	if binary is O3DE_EngineBinaries.ASSET_PROCESSOR:
@@ -208,10 +205,21 @@ def open_project(binary, config, force):
 		if asset_processor is None:
 			throw_error(Messages.MISSING_ASSET_PROCESSOR)
 
+	if engine_workflow is O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK:
+		engine_dir = O3DE_ENGINE_INSTALL_DIR
+	else:
+		engine_dir = O3DE_ENGINE_SOURCE_DIR
+
+	arguments = []
 	options = {
+		"engine-path": engine_dir,
+		"project-path": O3DE_PROJECT_SOURCE_DIR,
+		"regset=/Amazon/AzCore/Bootstrap/project_path": O3DE_PROJECT_SOURCE_DIR,
+		"regset=/Amazon/AzCore/Bootstrap/engine_path": engine_dir,
 		"regset=/Amazon/AzCore/Bootstrap/remote_ip": asset_processor.ip,
 		"regset=/Amazon/AzCore/Bootstrap/remote_port": asset_processor.port
 	}
+
 	if binary is O3DE_EngineBinaries.ASSET_PROCESSOR:
 		if NETWORK_SUBNET is not None:
 			options["regset=/Amazon/AzCore/Bootstrap/allowed_list"] = NETWORK_SUBNET
@@ -237,7 +245,7 @@ def open_project(binary, config, force):
 	exit(exit_code)
 
 
-def run_project(binary, config, console_commands, console_variables):
+def run_project(binary, config, variant, console_commands, console_variables):
 	project_name = read_json_property(O3DE_PROJECT_SOURCE_DIR / "project.json", JsonPropertyKey(None, None, "project_name"))
 	if project_name is None:
 		throw_error(Messages.INVALID_PROJECT_NAME)
@@ -251,13 +259,14 @@ def run_project(binary, config, console_commands, console_variables):
 	else:
 		throw_error(Messages.INVALID_BINARY, binary.value)
 
-	engine_workflow = get_build_workflow(O3DE_ENGINE_SOURCE_DIR, O3DE_ENGINE_BUILD_DIR, O3DE_ENGINE_INSTALL_DIR)
-	binary_file = get_project_binary(config, engine_workflow, "{}.{}".format(project_name, binary_name))
+	engine_build_dir = get_build_path(O3DE_ENGINE_BUILDS_DIR, variant)
+	engine_workflow = get_build_workflow(O3DE_ENGINE_SOURCE_DIR, engine_build_dir, O3DE_ENGINE_INSTALL_DIR)
+	binary_file = get_project_binary(config, variant, engine_workflow, "{}.{}".format(project_name, binary_name))
 	if not binary_file.is_file():
-		throw_error(Messages.MISSING_BINARY, str(binary_file), config.value, binary.value)
+		throw_error(Messages.MISSING_BINARY, str(binary_file), config.value, variant.value, binary.value)
 
 	asset_processor = discover_instance(O3DE_EngineBinaries.ASSET_PROCESSOR)
-	if asset_processor is None:
+	if asset_processor is None and not config is O3DE_Configs.RELEASE:
 		throw_error(Messages.MISSING_ASSET_PROCESSOR)
 
 	if binary is O3DE_ProjectBinaries.SERVER:
@@ -279,12 +288,12 @@ def run_project(binary, config, console_commands, console_variables):
 
 		console_variables[O3DE_ConsoleVariables.NETWORK_SERVER_LISTENING_PORT.value] = str(server.port)
 
-	options = {
-		"regset=/Amazon/AzCore/Bootstrap/remote_ip": asset_processor.ip,
-		"regset=/Amazon/AzCore/Bootstrap/remote_port": asset_processor.port
-	}
-
+	options = {}
 	arguments = []
+
+	if asset_processor is not None:
+		options["regset=/Amazon/AzCore/Bootstrap/remote_ip"] = asset_processor.ip
+		options["regset=/Amazon/AzCore/Bootstrap/remote_port"] = asset_processor.port
 
 	for variable_name, variable_value in console_variables.items():
 		arguments.append("+{}".format(variable_name))
@@ -380,14 +389,15 @@ def main():
 	elif command == RunnerCommands.RUN:
 		binary = deserialize_arg(2, O3DE_ProjectBinaries)
 		config = deserialize_arg(3, O3DE_Configs)
+		variant = deserialize_arg(4, O3DE_Variants)
 
-		index = 4
+		index = 5
 		console_commands = deserialize_args(index, list, str)
 
 		index += len(console_commands) + 1
 		console_variables = deserialize_args(index, dict, str)
 
-		run_project(binary, config, console_commands, console_variables)
+		run_project(binary, config, variant, console_commands, console_variables)
 
 	else:
 		throw_error(Messages.INVALID_COMMAND, command.value)

@@ -14,7 +14,7 @@
 
 
 from ..utils.filesystem import is_directory_empty
-from ..utils.subfunctions import get_build_path, get_script_filename, has_build_config, has_install_config
+from ..utils.subfunctions import get_builds_root_path, get_script_filename, has_configuration
 from ..utils.types import ObjectEnum
 from .o3tanks import OPERATING_SYSTEM, RUN_CONTAINERS, USER_NAME, init_from_env
 import pathlib
@@ -65,6 +65,10 @@ class O3DE_BuildWorkflows(ObjectEnum):
 	PROJECT_CENTRIC_ENGINE_SOURCE = "project"
 	PROJECT_CENTRIC_ENGINE_SDK = "sdk"
 
+class O3DE_Variants(ObjectEnum):
+	MONOLITHIC = "monolithic"
+	NON_MONOLITHIC = "non-monolithic"
+
 
 # --- FUNCTIONS ---
 
@@ -74,6 +78,21 @@ def get_default_root_dir():
 	return (pathlib.PosixPath(path) if RUN_CONTAINERS else pathlib.PurePosixPath(path))
 
 
+def get_build_path(builds_root_dir, variant = O3DE_Variants.NON_MONOLITHIC, operating_system = OPERATING_SYSTEM):
+	return builds_root_dir / "{}{}".format(operating_system.family.value, "_mono" if variant is O3DE_Variants.MONOLITHIC else "")
+
+
+def get_build_bin_path(build_dir, config):
+	return pathlib.Path("{}/bin/{}".format(build_dir, config.value))
+
+
+def get_install_bin_path(install_dir, config, variant = O3DE_Variants.NON_MONOLITHIC, operating_system = OPERATING_SYSTEM):
+	return pathlib.Path("{}/bin/{}/{}/{}".format(install_dir, operating_system.family.value, config.value, "Monolithic" if variant is O3DE_Variants.MONOLITHIC else "Default"))
+
+def get_install_lib_path(install_dir, config, variant = O3DE_Variants.NON_MONOLITHIC, operating_system = OPERATING_SYSTEM):
+	return pathlib.Path("{}/lib/{}/{}/{}".format(install_dir, operating_system.family.value, config.value, "Monolithic" if variant is O3DE_Variants.MONOLITHIC else "Default"))
+
+
 def get_build_workflow(source_dir, build_dir, install_dir):
 	if source_dir.is_dir() and (source_dir / ".git").is_dir() and (source_dir / "engine.json").is_file():
 		build_workflow = O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SOURCE
@@ -81,7 +100,7 @@ def get_build_workflow(source_dir, build_dir, install_dir):
 		build_workflow = None
 
 	for config in O3DE_Configs:
-		if has_install_config(install_dir, config):
+		if has_install_config(install_dir, config, O3DE_Variants.NON_MONOLITHIC) or has_install_config(install_dir, config, O3DE_Variants.MONOLITHIC):
 			build_workflow = O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK
 			break
 
@@ -90,6 +109,23 @@ def get_build_workflow(source_dir, build_dir, install_dir):
 			break
 
 	return build_workflow
+
+
+def has_build_config(build_dir, config):
+	config_dir = get_build_bin_path(build_dir, config)
+
+	return has_configuration(config_dir)
+
+
+def has_install_config(install_dir, config, variant):
+	bin_dir = get_install_bin_path(install_dir, config, variant)
+
+	binary_exists = has_configuration(bin_dir)
+	if binary_exists:
+		return True
+	
+	lib_dir = get_install_lib_path(install_dir, config, variant)
+	return lib_dir.is_dir() and not is_directory_empty(lib_dir)
 
 
 # --- CONSTANTS ---
@@ -101,9 +137,9 @@ O3DE_ROOT_DIR = init_from_env("O3DE_DIR", pathlib.Path, get_default_root_dir())
 
 O3DE_ENGINE_SOURCE_DIR = init_from_env("O3DE_ENGINE_DIR", pathlib.Path, O3DE_ROOT_DIR / "engine")
 O3DE_ENGINE_REPOSITORY_DIR = O3DE_ENGINE_SOURCE_DIR / ".git"
-O3DE_ENGINE_BUILD_DIR = O3DE_ENGINE_SOURCE_DIR / "build"
+O3DE_ENGINE_BUILDS_DIR = get_builds_root_path(O3DE_ENGINE_SOURCE_DIR)
 O3DE_ENGINE_INSTALL_DIR = O3DE_ENGINE_SOURCE_DIR / "install"
-if RUN_CONTAINERS and O3DE_ENGINE_INSTALL_DIR.is_dir() and not is_directory_empty(O3DE_ENGINE_INSTALL_DIR):
+if RUN_CONTAINERS and O3DE_ENGINE_INSTALL_DIR.is_dir() and (O3DE_ENGINE_INSTALL_DIR / "scripts").is_dir() and not is_directory_empty(O3DE_ENGINE_INSTALL_DIR / "scripts"):
 	O3DE_ENGINE_SCRIPTS_DIR = O3DE_ENGINE_INSTALL_DIR / "scripts"
 else:
 	O3DE_ENGINE_SCRIPTS_DIR = O3DE_ENGINE_SOURCE_DIR / "scripts"
@@ -115,11 +151,11 @@ O3DE_GEMS_EXTERNAL_DIR = init_from_env("O3DE_GEMS_EXTERNAL_DIR", pathlib.Path, O
 O3DE_PACKAGES_DIR = init_from_env("O3DE_PACKAGES_DIR", pathlib.Path, O3DE_ROOT_DIR / "packages")
 
 O3DE_PROJECT_SOURCE_DIR = init_from_env("O3DE_PROJECT_DIR", pathlib.Path, O3DE_ROOT_DIR / "project")
-O3DE_PROJECT_BUILD_DIR = get_build_path(O3DE_PROJECT_SOURCE_DIR, OPERATING_SYSTEM)
-O3DE_PROJECT_BIN_DIR = O3DE_PROJECT_BUILD_DIR / "bin"
+O3DE_PROJECT_BUILDS_DIR = get_builds_root_path(O3DE_PROJECT_SOURCE_DIR)
 O3DE_PROJECT_CACHE_DIR = O3DE_PROJECT_SOURCE_DIR / "Cache"
 O3DE_PROJECT_USER_DIR = O3DE_PROJECT_SOURCE_DIR / "user"
 
 O3DE_DEFAULT_VERSION = "development"
 O3DE_DEFAULT_CONFIG = O3DE_Configs.PROFILE
+O3DE_DEFAULT_VARIANT = O3DE_Variants.NON_MONOLITHIC
 O3DE_DEFAULT_WORKFLOW = O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SDK

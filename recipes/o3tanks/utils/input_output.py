@@ -142,6 +142,7 @@ class Messages(AutoEnum):
 	INVALID_TARGET = enum.auto()
 	INVALID_TEMPLATE = enum.auto()
 	INVALID_USER_NAMESPACE = enum.auto()
+	INVALID_VARIANT = enum.auto()
 	INVALID_VERSION = enum.auto()
 	INVALID_VOLUME_DIRECTORY = enum.auto()
 	INVALID_VOLUME_TYPE = enum.auto()
@@ -374,7 +375,7 @@ def get_message_text(message_id, *args, **kwargs):
 	elif message_id == Messages.INSTALL_ALREADY_EXISTS_DIFFERENT_WORKFLOW:
 		message_text = "Engine version '{}' is already installed with a different build workflow ({})"
 	elif message_id == Messages.INSTALL_AND_CONFIG_ALREADY_EXISTS:
-		message_text = "Config '{}' for engine version '{}' is already installed. Please use '" + print_command(CliCommands.REFRESH) + "' to check if updates are available"
+		message_text = "Permutation with config '{1}' and variant '{2}' for engine version '{0}' is already installed. Please use '" + print_command(CliCommands.REFRESH) + "' to check if updates are available"
 	elif message_id == Messages.INSTALL_ENGINE_COMPLETED:
 		message_text = "Operation completed! Version '{}' is now usable"
 	elif message_id == Messages.INSTALL_GEM_COMPLETED:
@@ -509,6 +510,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Unsupported template: {}"
 	elif message_id == Messages.INVALID_USER_NAMESPACE:
 		message_text = "Unable to calculate the user namespace for the container user"
+	elif message_id == Messages.INVALID_VARIANT:
+		message_text = "Invalid variant name: {}"
 	elif message_id == Messages.INVALID_VERSION:
 		message_text = "Invalid version name: {}. Only following characters are allowed: alphanumerics, dots, hyphens and underscores"
 	elif message_id == Messages.INVALID_VOLUME_DIRECTORY:
@@ -524,7 +527,7 @@ def get_message_text(message_id, *args, **kwargs):
 	elif message_id == Messages.MISSING_ASSET_PROCESSOR:
 		message_text = "A running instance of the asset processor is required, but none was found"
 	elif message_id == Messages.MISSING_BINARY:
-		message_text = "No binary exists at: {}. Do you have built the project with: config='{}' binary='{}'?"
+		message_text = "No binary exists at: {}. Do you have built the project with: config='{}', variant='{}', binary='{}'?"
 	elif message_id == Messages.MISSING_BOUND_VERSION:
 		message_text = "No {0} version '{1}' was found. Please use '" + print_command(CliCommands.INSTALL) + " {0}' to download it or '" + print_command(CliCommands.SETTINGS) + "' to clear it from project settings"
 	elif message_id == Messages.MISSING_CLANG:
@@ -546,13 +549,13 @@ def get_message_text(message_id, *args, **kwargs):
 	elif message_id == Messages.MISSING_INSTALL_ENGINE:
 		message_text = "The engine version required by this project is not installed, but it is available at: {}"
 	elif message_id == Messages.MISSING_INSTALL_ENGINE_CONFIG:
-		message_text = "Engine version '{}' required by this project is installed, but it doesn't contain config '{}'"
+		message_text = "Engine version '{}' required by this project is installed, but it hasn't the following permutation: config '{}' - variant '{}'"
 	elif message_id == Messages.MISSING_INSTALL_ENGINE_PROJECT:
 		message_text = "Engine version '{}' is installed with an engine-centric workflow and doesn't include this project. Please use '" + print_command(CliCommands.SETTINGS) + "' to select another engine with a project-centric workflow"
 	elif message_id == Messages.MISSING_INSTALL_GEM:
 		message_text = "A gem for this project is not installed, but it is available at: {}"
 	elif message_id == Messages.MISSING_INSTALL_AND_CONFIG:
-		message_text = "Unable to find an engine installation for version '{}' and config '{}'. Please use '" + print_command(CliCommands.INSTALL) + "' to add it and try again"
+		message_text = "Unable to find an engine installation for version '{}', config '{}' an variant '{}'. Please use '" + print_command(CliCommands.INSTALL) + "' to add it and try again"
 	elif message_id == Messages.MISSING_LEVEL:
 		message_text = "Unable to find a level file at: {}"
 	elif message_id == Messages.MISSING_MODULE:

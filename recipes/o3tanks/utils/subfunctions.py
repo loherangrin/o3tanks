@@ -57,15 +57,8 @@ def clear_registered_gems(project_dir, restore_gems = None, filter_gems = None):
 	write_json_property(project_manifest_file, gems_key, new_gems, False)
 
 
-def get_build_path(root_dir, operating_system = OPERATING_SYSTEM):
-	return root_dir / "build" / operating_system.family.value
-
-
-def get_build_config_path(build_dir, config, operating_system = OPERATING_SYSTEM):
-	return pathlib.Path("{}/bin/{}".format(build_dir, config.value))
-
-def get_install_config_path(install_dir, config, operating_system = OPERATING_SYSTEM):
-	return pathlib.Path("{}/bin/{}/{}/Default".format(install_dir, operating_system.family.value, config.value))
+def get_builds_root_path(source_dir):
+	return source_dir / "build"
 
 
 def get_external_gem_path(external_gems_dir, gem_dir):
@@ -144,18 +137,6 @@ def get_script_filename(name):
 		throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM.family)
 
 	return "{}.{}".format(name, extension)
-
-
-def has_build_config(build_dir, config):
-	config_dir = get_build_config_path(build_dir, config)
-
-	return has_configuration(config_dir)
-
-
-def has_install_config(install_dir, config):
-	config_dir = get_install_config_path(install_dir, config)
-
-	return has_configuration(config_dir)
 
 
 def has_configuration(config_dir):

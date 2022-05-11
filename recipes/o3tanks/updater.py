@@ -83,7 +83,12 @@ def clone_repository(url, reference, target_dir):
 
 	is_engine = (target_dir is O3DE_ENGINE_SOURCE_DIR)
 	if is_engine:
-		for stage_dir in [ O3DE_ENGINE_BUILD_DIR, O3DE_ENGINE_INSTALL_DIR ]:
+		for stage_dir in [
+			get_build_path(O3DE_ENGINE_BUILDS_DIR, O3DE_Variants.NON_MONOLITHIC),
+			get_build_path(O3DE_ENGINE_BUILDS_DIR, O3DE_Variants.MONOLITHIC),
+			O3DE_ENGINE_BUILDS_DIR,
+			O3DE_ENGINE_INSTALL_DIR
+		]:
 			if stage_dir.is_dir() and is_directory_empty(stage_dir):
 				stage_dir.rmdir()
 

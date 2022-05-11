@@ -136,6 +136,7 @@ class LongOptions(ObjectEnum):
 	SAVE_IMAGES = "save-images"
 	TAG = "tag"
 	TYPE = "type"
+	VARIANT = "variant"
 	VERBOSE = "verbose"
 	VERSION = CliCommands.VERSION.value
 	WORKFLOW = "workflow"

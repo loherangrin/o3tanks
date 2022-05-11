@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-from ..globals.o3de import O3DE_ENGINE_BUILD_DIR, O3DE_ENGINE_INSTALL_DIR, O3DE_ENGINE_SOURCE_DIR, O3DE_GEMS_DIR, O3DE_GEMS_EXTERNAL_DIR, O3DE_PACKAGES_DIR, O3DE_PROJECT_SOURCE_DIR
+from ..globals.o3de import O3DE_ENGINE_BUILDS_DIR, O3DE_ENGINE_INSTALL_DIR, O3DE_ENGINE_SOURCE_DIR, O3DE_GEMS_DIR, O3DE_GEMS_EXTERNAL_DIR, O3DE_PACKAGES_DIR, O3DE_PROJECT_SOURCE_DIR
 from ..globals.o3tanks import DATA_DIR, DEVELOPMENT_MODE, DISPLAY_ID, GPU_CARD_IDS, GPU_DRIVER_NAME, GPU_RENDER_OFFLOAD, OPERATING_SYSTEM, REAL_USER, RUN_CONTAINERS, ROOT_DIR, USER_NAME, USER_GROUP, GPUDrivers, Images, Volumes, get_version_number
 from .filesystem import clear_directory, is_directory_empty
 from .input_output import Level, Messages, get_verbose, print_msg, throw_error
@@ -807,7 +807,7 @@ class NoneContainerClient(ContainerClient):
 			engine_volume_type = None
 			if to_path == str(O3DE_ENGINE_SOURCE_DIR):
 				engine_volume_type = Volumes.SOURCE
-			elif to_path == str(O3DE_ENGINE_BUILD_DIR):
+			elif to_path == str(O3DE_ENGINE_BUILDS_DIR):
 				engine_volume_type = Volumes.BUILD
 			elif to_path == str(O3DE_ENGINE_INSTALL_DIR):
 				engine_volume_type = Volumes.INSTALL
