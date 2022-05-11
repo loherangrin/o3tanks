@@ -64,6 +64,14 @@ class Messages(AutoEnum):
 	ERROR_SAVE_IMAGE = enum.auto()
 	EXCEED_MAX_PORT_ATTEMPTS = enum.auto()
 	EXIT_CODE_NOT_FOUND = enum.auto()
+	EXPORT_ARCHIVE_COMPLETED = enum.auto()
+	EXPORT_IMAGE_COMPLETED = enum.auto()
+	EXPORT_INVALID_CONFIG_AND_BUNDLE = enum.auto()
+	EXPORT_MISSING_BINARY = enum.auto()
+	EXPORT_MISSING_ASSETS = enum.auto()
+	EXPORT_SKIP_BUILD_SOURCE = enum.auto()
+	EXPORT_SKIP_PACK_BUNDLES = enum.auto()
+	EXPORT_SKIP_PROCESS_ASSETS = enum.auto()
 	FAST_FORWARD_ONLY = enum.auto()
 	GEM_ALREADY_ADDED = enum.auto()
 	GEM_DIFFERENT_VALUES = enum.auto()
@@ -85,6 +93,7 @@ class Messages(AutoEnum):
 	INSTALL_EXTERNAL_SYSTEM_PACKAGES_2 = enum.auto()
 	INSTALL_OTHER_COMMANDS = enum.auto()
 	INVALID_ANSWER = enum.auto()
+	INVALID_ARCHIVE_TYPE = enum.auto()
 	INVALID_BINARY = enum.auto()
 	INVALID_BUILD_WORKFLOW = enum.auto()
 	INVALID_COMMAND = enum.auto()
@@ -123,6 +132,7 @@ class Messages(AutoEnum):
 	INVALID_OPTION = enum.auto()
 	INVALID_PACKAGE_MANAGER_RESULT = enum.auto()
 	INVALID_PROJECT_NAME = enum.auto()
+	INVALID_PROJECT_NAME_FOR_IMAGES = enum.auto()
 	INVALID_PROPERTY_INDEX = enum.auto()
 	INVALID_PROPERTY_KEY = enum.auto()
 	INVALID_PROPERTY_VALUE = enum.auto()
@@ -154,6 +164,7 @@ class Messages(AutoEnum):
 	MISSING_ASSET_PROCESSOR = enum.auto()
 	MISSING_BINARY = enum.auto()
 	MISSING_BOUND_VERSION = enum.auto()
+	MISSING_BUNDLE = enum.auto()
 	MISSING_CLANG = enum.auto()
 	MISSING_CMAKE = enum.auto()
 	MISSING_CONFIG = enum.auto()
@@ -196,9 +207,14 @@ class Messages(AutoEnum):
 	SOURCE_ALREADY_EXISTS = enum.auto()
 	SOURCE_NOT_FOUND = enum.auto()
 	START_DOWNLOAD_SOURCE = enum.auto()
+	START_EXPORT_BUILD_BINARY = enum.auto()
+	START_EXPORT_PROCESS_ASSETS = enum.auto()
+	START_EXPORT_PACK_ASSETS_TO_BUNDLES = enum.auto()
+	START_EXPORT_SAVE_IMAGE = enum.auto()
 	UNCOMPLETED_ADD_GEM = enum.auto()
 	UNCOMPLETED_BUILD_PROJECT = enum.auto()
 	UNCOMPLETED_CHECK_GEM_RESOLVE_RELATIVE_PATH = enum.auto()
+	UNCOMPLETED_EXPORT = enum.auto()
 	UNCOMPLETED_IMAGE = enum.auto()
 	UNCOMPLETED_INIT_ENGINE = enum.auto()
 	UNCOMPLETED_INIT_GEM = enum.auto()
@@ -345,11 +361,27 @@ def get_message_text(message_id, *args, **kwargs):
 	elif message_id == Messages.ERROR_BUILD_IMAGE:
 		message_text = "Unable to build the missing image: {}. Please build it manually"
 	elif message_id == Messages.ERROR_SAVE_IMAGE:
-		message_text = "Unable to save the image with the final installation: {}"
+		message_text = "Unable to save the required container image: {}"
 	elif message_id == Messages.EXCEED_MAX_PORT_ATTEMPTS:
 		message_text = "Unable to find an empty port on your system (exceeding max. attempts: {})"
 	elif message_id == Messages.EXIT_CODE_NOT_FOUND:
 		message_text = "Unable to calculate the exit code of the last container from image '{}'. Assuming it was an error..."
+	elif message_id == Messages.EXPORT_ARCHIVE_COMPLETED:
+		message_text = "Operation completed! The exported package is available at: {}"
+	elif message_id == Messages.EXPORT_IMAGE_COMPLETED:
+		message_text = "Operation completed! The exported image is available in your container repository with tag: {}"
+	elif message_id == Messages.EXPORT_INVALID_CONFIG_AND_BUNDLE:
+		message_text = "Asset bundles cannot be used with '{}' config. Please remove " + print_option(LongOptions.BUNDLE) + " option to use processed asset files instead"
+	elif message_id == Messages.EXPORT_MISSING_BINARY:
+		message_text = "Unable to find a built binary for '{}' config with '{}' variant. Please remove " + print_option(LongOptions.SKIP_BUILD) + " option or use " + print_command(CliCommands.BUILD) + " command to build it manually, then try again"
+	elif message_id == Messages.EXPORT_MISSING_ASSETS:
+		message_text = "Unable to find processed assets.  Please remove " + print_option(LongOptions.SKIP_BUILD) + " option and try again. Please remove " + print_option(LongOptions.SKIP_BUILD) + " option or use " + print_command(CliCommands.BUILD) + " " + CliSubCommands.ASSETS + " command to process them manually, then try again"
+	elif message_id == Messages.EXPORT_SKIP_BUILD_SOURCE:
+		message_text = "Re-using a previous project build"
+	elif message_id == Messages.EXPORT_SKIP_PACK_BUNDLES:
+		message_text = "Re-using existing bundle files: {}"
+	elif message_id == Messages.EXPORT_SKIP_PROCESS_ASSETS:
+		message_text = "Re-using previous processed assets"	
 	elif message_id == Messages.FAST_FORWARD_ONLY:
 		message_text = "Your version has one or more commits ahead the remote and cannot be upgraded automatically using fast-forward. Please 'merge' it manually using an external GIT client"
 	elif message_id == Messages.GEM_ALREADY_ADDED:
@@ -396,6 +428,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Do you want to install"
 	elif message_id == Messages.INVALID_ANSWER:
 		message_text = "Invalid answer. Please try again"
+	elif message_id == Messages.INVALID_ARCHIVE_TYPE:
+		message_text = "Invalid archive type: {}"
 	elif message_id == Messages.INVALID_BINARY:
 		message_text = "Unsupported binary: {}"
 	elif message_id == Messages.INVALID_BUILD_WORKFLOW:
@@ -472,6 +506,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "Unable to parse a returning line of the package manager: {}"
 	elif message_id == Messages.INVALID_PROJECT_NAME:
 		message_text = "Unable to retrieve the project name from the manifest file"
+	elif message_id == Messages.INVALID_PROJECT_NAME_FOR_IMAGES:
+		message_text = "Project name '{}' contains characters that aren't allowed for a container image name. Please use " + print_option(LongOptions.ALIAS, "<string>") + " option to provide a valid name"
 	elif message_id == Messages.INVALID_PROPERTY_INDEX:
 		message_text = "Index for property '{}' exceeds its size: {}"
 	elif message_id == Messages.INVALID_PROPERTY_KEY:
@@ -513,7 +549,7 @@ def get_message_text(message_id, *args, **kwargs):
 	elif message_id == Messages.INVALID_VARIANT:
 		message_text = "Invalid variant name: {}"
 	elif message_id == Messages.INVALID_VERSION:
-		message_text = "Invalid version name: {}. Only following characters are allowed: alphanumerics, dots, hyphens and underscores"
+		message_text = "Invalid version name: {}. Only following characters are allowed: lowercase characters, numbers, dots, hyphens and underscores"
 	elif message_id == Messages.INVALID_VOLUME_DIRECTORY:
 		message_text = "A directory was expected for volume '{}' at: {}"
 	elif message_id == Messages.INVALID_VOLUME_TYPE:
@@ -530,6 +566,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "No binary exists at: {}. Do you have built the project with: config='{}', variant='{}', binary='{}'?"
 	elif message_id == Messages.MISSING_BOUND_VERSION:
 		message_text = "No {0} version '{1}' was found. Please use '" + print_command(CliCommands.INSTALL) + " {0}' to download it or '" + print_command(CliCommands.SETTINGS) + "' to clear it from project settings"
+	elif message_id == Messages.MISSING_BUNDLE:
+		message_text = "Unable to find a bundle file: {}. Please use '" + print_command(CliCommands.EXPORT) + " " +  CliSubCommands.ASSETS.value + "' to create it and try again"
 	elif message_id == Messages.MISSING_CLANG:
 		message_text = "Unable to find 'clang'. Supported versions: 6, 11, 12"
 	elif message_id == Messages.MISSING_CMAKE:
@@ -613,13 +651,23 @@ def get_message_text(message_id, *args, **kwargs):
 	elif message_id == Messages.SOURCE_NOT_FOUND:
 		message_text = "No source repository was found"
 	elif message_id == Messages.START_DOWNLOAD_SOURCE:
-		message_text = "Downloading the source code from '{}'. Please wait..."		
+		message_text = "Downloading the source code from '{}'. Please wait..."
+	elif message_id == Messages.START_EXPORT_BUILD_BINARY:
+		message_text = "Building the source code using config '{}' and variant '{}'..."
+	elif message_id == Messages.START_EXPORT_PROCESS_ASSETS:
+		message_text = "Processing assets..."
+	elif message_id == Messages.START_EXPORT_PACK_ASSETS_TO_BUNDLES:
+		message_text = "Packing processed assets into bundles '{}'..."
+	elif message_id == Messages.START_EXPORT_SAVE_IMAGE:
+		message_text = "Generating a new container image with name '{}'..."
 	elif message_id == Messages.UNCOMPLETED_ADD_GEM:
 		message_text = "An error occured while adding the gem to the project (error: {}) {}"
 	elif message_id == Messages.UNCOMPLETED_BUILD_PROJECT:
 		message_text = "An unexpected error could be occurred while building the project"
 	elif message_id == Messages.UNCOMPLETED_CHECK_GEM_RESOLVE_RELATIVE_PATH:
 		message_text = "An error occurred while writing the absolute path for: {}"
+	elif message_id == Messages.UNCOMPLETED_EXPORT:
+		message_text = "An error occurred while exporting the project"
 	elif message_id == Messages.UNCOMPLETED_SOLUTION_GENERATION:
 		message_text = "An error occurred while generating required files to start the building process"
 	elif message_id == Messages.UNCOMPLETED_INIT_ENGINE:
@@ -659,7 +707,7 @@ def get_message_text(message_id, *args, **kwargs):
 	elif message_id == Messages.UPGRADE_ENGINE_COMPLETED:
 		message_text = "Upgrade completed. All related configurations was regenerated"
 	elif message_id == Messages.UPGRADE_ENGINE_COMPLETED_SKIP_REBUILD:
-		message_text = "Skipping rebuild since option '" + print_option(LongOptions.SKIP_REBUILD) + " is set"
+		message_text = "Skipping rebuild since option '" + print_option(LongOptions.SKIP_BUILD) + " is set"
 	elif message_id == Messages.UPGRADE_ENGINE_COMPLETED_SOURCE_ONLY:
 		message_text = "Source code was upgraded correctly. There isn't any installation to rebuild"
 	elif message_id == Messages.UPGRADE_GEM_COMPLETED:

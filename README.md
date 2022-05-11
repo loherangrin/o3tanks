@@ -8,6 +8,7 @@ Features:
 - Check for engine updates and apply them automatically (if any).
 - Bind a project to a specific engine version.
 - Build, edit and run a project using its bound engine version.
+- Export a project as an archive (zip, tar.gz) or a container image.
 - Switch the engine usage between isolated containers and the host machine at anytime.
 
 A visual summary of all supported commands and how they interact with each other is available at:
@@ -61,6 +62,11 @@ Build and run an instance of the project:
 ```
 o3tanks build client
 o3tanks run client
+```
+
+Export the project (binary + assets) to a runnable archive:
+```
+o3tanks export client
 ```
 
 See which engine version the project is using:
