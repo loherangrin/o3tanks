@@ -712,7 +712,7 @@ init_globals()
 			os_version=$(extract_substring "${os_value}" ':' '2')
 		else
 			os_name="${OS_NAMES_UBUNTU}"
-			os_version='20.04'
+			os_version='22.04'
 		fi
 	else
 		os_family=''
