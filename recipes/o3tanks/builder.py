@@ -49,7 +49,7 @@ def delete_openssl_files(builds_dir, config, variant):
 
 
 def search_clang_binaries():
-	supported_versions = [ "12", "11", "6.0", None ]
+	supported_versions = [ "14", "12", "11", "6.0", None ]
 
 	for version in supported_versions:
 		suffix = "-{}".format(version) if version is not None else ""
