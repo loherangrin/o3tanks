@@ -1,4 +1,4 @@
-# Copyright 2021-2022 Matteo Grasso
+# Copyright 2021-2023 Matteo Grasso
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -917,7 +917,7 @@ def print_version_info():
 	print("A containerized version manager for 'O3DE (Open 3D Engine)'")
 	print('https://github.com/loherangrin/o3tanks/')
 	print('')
-	print('Copyright (c) 2021-2022 Matteo Grasso')
+	print('Copyright (c) 2021-2023 Matteo Grasso')
 	print('Released under the Apache License, version 2.0')
 	print('Please see LICENSE and NOTICE files for license terms')
 
