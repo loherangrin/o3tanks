@@ -30,6 +30,10 @@ get_message_text()
 			echo 'Expecting a directory, but none was found at: %s'
 			;;
 
+		("${MESSAGES_INVALID_DOCKER_PROTOCOL}")
+			echo 'Docker daemon uses an invalid protocol (%s). Only domain socket (unix) are supported'
+			;;
+
 		("${MESSAGES_INVALID_GPU_ID}")
 			echo 'At least one of the following GPU cards cannot be found: %s'
 			;;
@@ -50,8 +54,12 @@ get_message_text()
 			echo "A display is expected, but none was found. If you want to run in headless mode, please set O3TANKS_DISPLAY to '${DISPLAY_TYPES_NONE}'"
 			;;
 
-		("${MESSAGES_MISSING_DOCKER}")
+		("${MESSAGES_MISSING_DOCKER_BINARY}")
 			echo "Unable to find 'docker'"
+			;;
+
+		("${MESSAGES_MISSING_DOCKER_SOCKET}")
+			echo "Unable to find a valid Docker socket at: %s.\nPlease check that Docker daemon is still running using the command 'docker info'.\nNote: If you are using a custom installation, you can use DOCKER_HOST to set your preferred socket location"
 			;;
 
 		("${MESSAGES_MISSING_ANY_GPU}")
@@ -386,7 +394,7 @@ calculate_user_namespace()
 check_docker()
 {
 	if ! command -v docker > /dev/null 2>&1 ; then
- 		throw_error "${MESSAGES_MISSING_DOCKER}"
+ 		throw_error "${MESSAGES_MISSING_DOCKER_BINARY}"
  	fi
 }
 
@@ -638,21 +646,23 @@ init_globals()
 
 	readonly MESSAGES_BIN_DIR_NOT_FOUND=1
 	readonly MESSAGES_INVALID_DIRECTORY=2
-	readonly MESSAGES_INVALID_GPU_ID=3
-	readonly MESSAGES_INVALID_OPERATING_SYSTEM=4
-	readonly MESSAGES_INVALID_SYMLINK=5
-	readonly MESSAGES_INVALID_USER_NAMESPACE=6
-	readonly MESSAGES_MISSING_DISPLAY=7
-	readonly MESSAGES_MISSING_DOCKER=8
-	readonly MESSAGES_MISSING_ANY_GPU=9
-	readonly MESSAGES_MISSING_DEDICATED_GPU=10
-	readonly MESSAGES_MISSING_INTEGRATED_GPU=11
-	readonly MESSAGES_MISSING_NVIDIA_DOCKER=12
-	readonly MESSAGES_MISSING_NVIDIA_DRIVER=13
-	readonly MESSAGES_MISSING_PYTHON=14
-	readonly MESSAGES_UNSUPPORTED_CONTAINTERS_MODE=15
-	readonly MESSAGES_UNSUPPORTED_SELECT_GPU_ID=16
-	readonly MESSAGES_VOLUMES_DIR_NOT_FOUND=17
+	readonly MESSAGES_INVALID_DOCKER_PROTOCOL=3
+	readonly MESSAGES_INVALID_GPU_ID=4
+	readonly MESSAGES_INVALID_OPERATING_SYSTEM=5
+	readonly MESSAGES_INVALID_SYMLINK=6
+	readonly MESSAGES_INVALID_USER_NAMESPACE=7
+	readonly MESSAGES_MISSING_DISPLAY=8
+	readonly MESSAGES_MISSING_DOCKER_BINARY=9
+	readonly MESSAGES_MISSING_DOCKER_SOCKET=10
+	readonly MESSAGES_MISSING_ANY_GPU=11
+	readonly MESSAGES_MISSING_DEDICATED_GPU=12
+	readonly MESSAGES_MISSING_INTEGRATED_GPU=13
+	readonly MESSAGES_MISSING_NVIDIA_DOCKER=14
+	readonly MESSAGES_MISSING_NVIDIA_DRIVER=15
+	readonly MESSAGES_MISSING_PYTHON=16
+	readonly MESSAGES_UNSUPPORTED_CONTAINTERS_MODE=17
+	readonly MESSAGES_UNSUPPORTED_SELECT_GPU_ID=18
+	readonly MESSAGES_VOLUMES_DIR_NOT_FOUND=19
 
 	readonly NETWORK_NAMES_NONE='none'
 	local network_name="${O3TANKS_NETWORK:-}"
@@ -907,12 +917,31 @@ run_cli()
 	check_docker
 	check_cli
 
-	local docker_socket="/run/user/${HOST_USER_UID}/docker.sock"
-	if ! [ -S "${docker_socket}" ]; then
-		docker_socket="/run/docker.sock"
+	local docker_socket
+	if [ -n "${DOCKER_HOST}" ]; then
+		local docker_protocol
+		docker_protocol=$(extract_substring "${DOCKER_HOST}" ':/' '1')
+
+		if ! [ "${docker_protocol}" = "unix" ]; then
+			throw_error "${MESSAGES_INVALID_DOCKER_PROTOCOL}" "${docker_protocol}"
+			return
+		fi
+
+		docker_socket=$(extract_substring "${DOCKER_HOST}" ':/' '2')
+		if ! [ -S "${docker_socket}" ]; then
+			throw_error "${MESSAGES_MISSING_DOCKER_SOCKET}" "${docker_socket}"
+		fi
+	else
+		local rootless_docker_socket="/run/user/${HOST_USER_UID}/docker.sock"
+		docker_socket="${rootless_docker_socket}"
 
 		if ! [ -S "${docker_socket}" ]; then
-			throw_error "${MESSAGES_MISSING_DOCKER}"
+			local root_docker_socket="/run/docker.sock"
+			docker_socket="${root_docker_socket}"
+
+			if ! [ -S "${docker_socket}" ]; then
+				throw_error "${MESSAGES_MISSING_DOCKER_SOCKET}" "${rootless_docker_socket} or ${root_docker_socket}"
+			fi
 		fi
 	fi
 
