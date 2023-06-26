@@ -14,6 +14,7 @@
 
 
 import enum
+import pathlib
 import typing
 
 
@@ -136,3 +137,4 @@ class User(typing.NamedTuple):
 	group: str
 	uid: int
 	gid: int
+	home: pathlib.PurePath

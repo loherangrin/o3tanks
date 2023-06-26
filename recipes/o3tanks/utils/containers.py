@@ -14,7 +14,7 @@
 
 
 from ..globals.o3de import O3DE_ENGINE_BUILDS_DIR, O3DE_ENGINE_INSTALL_DIR, O3DE_ENGINE_SOURCE_DIR, O3DE_GEMS_DIR, O3DE_GEMS_EXTERNAL_DIR, O3DE_PACKAGES_DIR, O3DE_PROJECT_SOURCE_DIR
-from ..globals.o3tanks import DATA_DIR, DEVELOPMENT_MODE, DISPLAY_ID, GPU_CARD_IDS, GPU_DRIVER_NAME, GPU_RENDER_OFFLOAD, OPERATING_SYSTEM, REAL_USER, RUN_CONTAINERS, ROOT_DIR, USER_NAME, USER_GROUP, GPUDrivers, Images, Volumes, get_version_number
+from ..globals.o3tanks import DATA_DIR, DEVELOPMENT_MODE, DISPLAY_ID, GPU_CARD_IDS, GPU_DRIVER_NAME, GPU_RENDER_OFFLOAD, OPERATING_SYSTEM, REAL_USER, RUN_CONTAINERS, ROOT_DIR, USER_NAME, USER_GROUP, USER_HOME, GPUDrivers, Images, Volumes, get_version_number
 from .filesystem import clear_directory, is_directory_empty
 from .input_output import Level, Messages, get_verbose, print_msg, throw_error
 from .serialization import serialize_list
@@ -90,7 +90,8 @@ class ContainerClient(abc.ABC):
 			"USER_NAME": container_user.name,
 			"USER_GROUP": container_user.group,
 			"USER_UID": str(container_user.uid),
-			"USER_GID": str(container_user.gid)
+			"USER_GID": str(container_user.gid),
+			"USER_HOME": str(container_user.home)
 		}
 
 
@@ -189,7 +190,9 @@ class ContainerClient(abc.ABC):
 		else:
 			throw_error(Messages.INVALID_OPERATING_SYSTEM, OPERATING_SYSTEM.family)
 
-		return User(name, group, uid, gid)
+		home = str(pathlib.Path.home())
+
+		return User(name, group, uid, gid, home)
 
 
 	def is_in_container(self):
@@ -405,7 +408,7 @@ class DockerContainerClient(ContainerClient):
 				container_uid = host_user.uid
 				container_gid = host_user.gid
 
-		return User(USER_NAME, USER_GROUP, container_uid, container_gid)
+		return User(USER_NAME, USER_GROUP, container_uid, container_gid, USER_HOME)
 
 
 	@staticmethod

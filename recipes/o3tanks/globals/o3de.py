@@ -16,7 +16,7 @@
 from ..utils.filesystem import is_directory_empty
 from ..utils.subfunctions import get_builds_root_path, get_script_filename, has_configuration
 from ..utils.types import OSFamilies, ObjectEnum
-from .o3tanks import OPERATING_SYSTEM, RUN_CONTAINERS, USER_NAME, init_from_env
+from .o3tanks import OPERATING_SYSTEM, RUN_CONTAINERS, USER_HOME, init_from_env
 import pathlib
 
 
@@ -80,9 +80,9 @@ class O3DE_Variants(ObjectEnum):
 # --- FUNCTIONS ---
 
 def get_default_root_dir():
-	path = "/home/{}/o3de".format(USER_NAME)
+	path = USER_HOME / "o3tanks"
 
-	return (pathlib.PosixPath(path) if RUN_CONTAINERS else pathlib.PurePosixPath(path))
+	return (pathlib.PosixPath(str(path)) if RUN_CONTAINERS else path)
 
 
 def get_build_path(builds_root_dir, variant = O3DE_Variants.NON_MONOLITHIC, operating_system = OPERATING_SYSTEM):
