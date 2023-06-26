@@ -277,6 +277,7 @@ build_image()
 		--build-arg USER_GROUP="${USER_GROUP}" \
 		--build-arg USER_UID="${USER_UID}" \
 		--build-arg USER_GID="${USER_GID}" \
+		--build-arg USER_HOME="${USER_HOME}" \
 		"${context_dir}"
 }
 
@@ -737,19 +738,32 @@ init_globals()
 	local host_user_group
 	local host_user_uid
 	local host_user_gid
+	local host_user_home
 	host_user_name=$(id --user --real --name)
 	host_user_group=$(id --group --real --name)
 	host_user_uid=$(id --user --real)
 	host_user_gid=$(id --group --real)
+	host_user_home=$(echo ~)
 	readonly HOST_USER_NAME="${host_user_name}"
 	readonly HOST_USER_GROUP="${host_user_group}"
 	readonly HOST_USER_GID="${host_user_gid}"
 	readonly HOST_USER_UID="${host_user_uid}"
+	readonly HOST_USER_HOME="${host_user_home}"
 
-	readonly USER_NAME='user'
+	local container_user_name
+	local container_user_home
+	if [ "${HOST_USER_NAME}" = 'root' ]; then
+		container_user_name='root'
+		container_user_home="/${container_user_name}"
+	else
+		container_user_name='user'
+		container_user_home="/home/${container_user_name}"
+	fi
+	readonly USER_NAME="${container_user_name}"
 	readonly USER_GROUP="${USER_NAME}"
 	readonly USER_UID="${host_user_uid}"
 	readonly USER_GID="${host_user_gid}"
+	readonly USER_HOME="${container_user_home}"
 
 	local real_user_name
 	local real_user_group
@@ -779,8 +793,9 @@ init_globals()
 	readonly REAL_USER_GROUP="${real_user_group}"
 	readonly REAL_USER_UID="${real_user_uid}"
 	readonly REAL_USER_GID="${real_user_gid}"
+	readonly REAL_USER_HOME="${HOST_USER_HOME}"
 
-	readonly O3DE_ROOT_DIR="/home/${USER_NAME}/o3de"
+	readonly O3DE_ROOT_DIR="${USER_HOME}/o3de"
 	readonly O3DE_GEMS_DIR="${O3DE_ROOT_DIR}/gems"
 	readonly O3DE_GEMS_EXTERNAL_DIR="${O3DE_GEMS_DIR}/.external"
 	readonly O3DE_PROJECT_DIR="${O3DE_ROOT_DIR}/project"
@@ -789,8 +804,8 @@ init_globals()
 	readonly SCRIPTS_PATH="${RECIPES_PATH}/o3tanks"
 
 	readonly DATA_DIR="${O3TANKS_DATA_DIR:-}"
-	readonly RECIPES_DIR="/home/${USER_NAME}/o3tanks_recipes"
-	readonly SCRIPTS_DIR="/home/${USER_NAME}/o3tanks"
+	readonly RECIPES_DIR="${USER_HOME}/o3tanks_recipes"
+	readonly SCRIPTS_DIR="${USER_HOME}/o3tanks"
 }
 
 run_cli()
@@ -1150,6 +1165,7 @@ run_cli()
 		--env O3TANKS_REAL_USER_GROUP="${REAL_USER_GROUP}" \
 		--env O3TANKS_REAL_USER_UID="${REAL_USER_UID}" \
 		--env O3TANKS_REAL_USER_GID="${REAL_USER_GID}" \
+		--env O3TANKS_REAL_USER_HOME="${REAL_USER_HOME}" \
 		${dev_env} \
 		${dev_mount} \
 		${display_env} \

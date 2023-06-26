@@ -273,9 +273,9 @@ def get_os():
 
 
 def get_default_root_dir():
-	path = "/home/{}/o3tanks".format(USER_NAME)
+	path = USER_HOME / "o3tanks"
 
-	return (pathlib.PosixPath(path) if RUN_CONTAINERS else pathlib.PurePosixPath(path))
+	return (pathlib.PosixPath(str(path)) if RUN_CONTAINERS else path)
 
 
 def get_default_data_dir(operating_system):
@@ -323,15 +323,17 @@ PRIVATE_PROJECT_SETTINGS_PATH = PRIVATE_PROJECT_EXTRA_PATH / "settings.json"
 ASSET_PROCESSOR_LOCK_PATH = PRIVATE_PROJECT_EXTRA_PATH / "asset-processor.json"
 SERVER_LOCK_PATH = PRIVATE_PROJECT_EXTRA_PATH / "server.json"
 
-USER_NAME = "user"
-USER_GROUP = USER_NAME
-
 REAL_USER = User(
 	init_from_env("O3TANKS_REAL_USER_NAME", str, None),
 	init_from_env("O3TANKS_REAL_USER_GROUP", str, None),
 	init_from_env("O3TANKS_REAL_USER_UID", int, None),
-	init_from_env("O3TANKS_REAL_USER_GID", int, None)
+	init_from_env("O3TANKS_REAL_USER_GID", int, None),
+	init_from_env("O3TANKS_REAL_USER_HOME", pathlib.PurePath, None)
 )
+
+USER_NAME = "root" if REAL_USER.uid == 0 else "user"
+USER_GROUP = USER_NAME
+USER_HOME = pathlib.PurePosixPath("/root") if REAL_USER.uid == 0 else pathlib.PurePosixPath("/home") / USER_NAME
 
 ROOT_DIR = init_from_env("O3TANKS_DIR", pathlib.Path, get_default_root_dir())
 DATA_DIR = init_from_env("O3TANKS_DATA_DIR",pathlib.Path, get_default_data_dir(OPERATING_SYSTEM))

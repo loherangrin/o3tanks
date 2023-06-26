@@ -36,7 +36,7 @@ ARG USER_NAME
 ARG USER_GROUP
 ARG USER_UID
 ARG USER_GID
-ARG USER_HOME=/home/${USER_NAME}
+ARG USER_HOME
 RUN if [ -z "${USER_NAME}" ] || [ -z "${USER_GROUP}" ] || [ -z "${USER_UID}" ] || [ -z "${USER_GID}" ]; then \
 		echo 'ERROR: At least one user property is missing. Please check your --build-arg values' \
 	 && exit 1 \
