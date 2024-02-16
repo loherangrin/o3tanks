@@ -214,6 +214,7 @@ class Messages(AutoEnum):
 	START_EXPORT_SAVE_IMAGE = enum.auto()
 	UNCOMPLETED_ADD_GEM = enum.auto()
 	UNCOMPLETED_BUILD_PROJECT = enum.auto()
+	UNCOMPLETED_CHANGE_OWNERSHIP = enum.auto()
 	UNCOMPLETED_CHECK_GEM_RESOLVE_RELATIVE_PATH = enum.auto()
 	UNCOMPLETED_EXPORT = enum.auto()
 	UNCOMPLETED_IMAGE = enum.auto()
@@ -667,6 +668,8 @@ def get_message_text(message_id, *args, **kwargs):
 		message_text = "An error occured while adding the gem to the project (error: {}) {}"
 	elif message_id == Messages.UNCOMPLETED_BUILD_PROJECT:
 		message_text = "An unexpected error could be occurred while building the project"
+	elif message_id == Messages.UNCOMPLETED_CHANGE_OWNERSHIP:
+		message_text = "An error occurred while changing the ownership for: {}\n{}"
 	elif message_id == Messages.UNCOMPLETED_CHECK_GEM_RESOLVE_RELATIVE_PATH:
 		message_text = "An error occurred while writing the absolute path for: {}"
 	elif message_id == Messages.UNCOMPLETED_EXPORT:

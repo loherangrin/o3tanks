@@ -691,14 +691,14 @@ def select_recommended_config(engine_version, max_limit = O3DE_Configs.PROFILE):
 # --- FUNCTIONS (GENERIC) ---
 
 def apply_updates():
-	resume_command = [
+	resume_command = ' '.join([
 		get_bin_name(),
 		CliCommands.UPGRADE.value,
 		CliSubCommands.SELF.value[0]
-	]
+	])
 
 	if CONTAINER_CLIENT.is_in_container():
-		installation_dir = ROOT_DIR
+		installation_dir = O3DE_PROJECT_SOURCE_DIR
 		mapping = { str(installation_dir): get_real_bin_file().parent }
 	else:
 		installation_dir = get_real_bin_file().parent
@@ -834,17 +834,12 @@ def check_ownership(paths, instructions, resume_command, mapping = None):
 		paths = [ paths ]
 	elif len(paths) == 0:
 		return
-
-	current_user = CONTAINER_CLIENT.get_current_user()
-	if current_user is None:
-		throw_error(Messages.INVALID_CURRENT_USER)
+	elif OPERATING_SYSTEM.family is OSFamilies.WINDOWS:
+		return
 
 	container_user = CONTAINER_CLIENT.get_container_user()
-	if container_user is None:
+	if (container_user.uid is None) or (container_user.gid is None):
 		throw_error(Messages.INVALID_CONTAINER_USER)
-
-	if (current_user.uid == container_user.uid) and (current_user.gid == container_user.gid):
-		return
 
 	wrong_paths = []
 	for path in paths:
@@ -861,16 +856,34 @@ def check_ownership(paths, instructions, resume_command, mapping = None):
 	if has_superuser_privileges():
 		try:
 			for wrong_path in wrong_paths:
-				os.chown(wrong_path, container_user.uid, container_user.gid)
+				change_owner(wrong_path, container_user)
 
 			show_instructions = False
 
-		except PermissionError:
+		except Exception as error:
+			real_path = wrong_path
+			if mapping is not None:
+				for mapping_from, mapping_to in mapping.items():
+					try:
+						relative_path = wrong_path.relative_to(mapping_from)
+						real_path = mapping_to / relative_path
+						break
+					except ValueError:
+						continue
+
+			print_msg(Level.ERROR, Messages.UNCOMPLETED_CHANGE_OWNERSHIP, real_path, error)
+			print_msg(Level.INFO, '')
+
 			show_instructions = True
+
 	else:
 		show_instructions = True
 
 	if show_instructions:
+		real_container_user = CONTAINER_CLIENT.get_container_user(False)
+		if (real_container_user.uid is None) or (real_container_user.gid is None):
+			throw_error(Messages.INVALID_CONTAINER_USER)
+
 		print_msg(Level.INFO, instructions)
 		print_msg(Level.INFO, '')
 		print_msg(Level.INFO, Messages.RUN_PRIVILEGED_COMMANDS)
@@ -884,7 +897,7 @@ def check_ownership(paths, instructions, resume_command, mapping = None):
 						real_path = mapping_to / relative_path
 						break
 					except ValueError:
-						continue						
+						continue
 
 			real_container_user = CONTAINER_CLIENT.get_container_user(False)
 			print_msg(Level.INFO, "sudo chown --recursive {}:{} {}".format(real_container_user.uid, real_container_user.gid, real_path))
@@ -1070,7 +1083,7 @@ def run_updater(engine_version, command, target, *arguments):
 		binds[str(project_dir)] = str(O3DE_PROJECT_SOURCE_DIR)
 
 	elif target is Targets.SELF:
-		binds[str(get_real_bin_file().parent)] = str(O3DE_ENGINE_SOURCE_DIR)
+		binds[str(get_real_bin_file().parent)] = str(O3DE_PROJECT_SOURCE_DIR)
 
 	else:
 		throw_error(Messages.INVALID_TARGET, target)
@@ -1092,14 +1105,14 @@ def run_updater(engine_version, command, target, *arguments):
 
 
 def search_updates():
-	resume_command = [
+	resume_command = ' '.join([
 		get_bin_name(),
 		CliCommands.REFRESH.value,
 		CliSubCommands.SELF.value[0]
-	]
+	])
 
 	if CONTAINER_CLIENT.is_in_container():
-		installation_dir = ROOT_DIR
+		installation_dir = O3DE_PROJECT_SOURCE_DIR
 		mapping = { str(installation_dir): get_real_bin_file().parent }
 	else:
 		installation_dir = get_real_bin_file().parent

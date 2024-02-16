@@ -625,13 +625,16 @@ init_globals()
 	readonly COMMANDS_INIT='init'
 	readonly COMMANDS_INSTALL='install'
 	readonly COMMANDS_OPEN='open'
+	readonly COMMANDS_REFRESH='refresh'
 	readonly COMMANDS_REMOVE='remove'
 	readonly COMMANDS_RUN='run'
 	readonly COMMANDS_SETTINGS='settings'
+	readonly COMMANDS_UPGRADE='upgrade'
 
 	readonly SUBCOMMANDS_ASSETS='assets'
 	readonly SUBCOMMANDS_GEM='gem'
 	readonly SUBCOMMANDS_PROJECT='project'
+	readonly SUBCOMMANDS_SELF='self'
 
 	readonly DISPLAY_TYPES_NONE='none'
 
@@ -1091,7 +1094,17 @@ run_cli()
 
 				project_mount="--mount type=bind,source=${project_dir},destination=${O3DE_PROJECT_DIR}"
 			fi
-			;;	
+			;;
+
+			("${COMMANDS_REFRESH}"|"${COMMANDS_UPGRADE}")
+			local subcommand
+			subcommand="${2:-}"
+			if [ "${subcommand}" = "${SUBCOMMANDS_SELF}" ]; then
+				project_mount="--mount type=bind,source=${BIN_DIR},destination=${O3DE_PROJECT_DIR}"
+			else
+				project_mount=''
+			fi
+			;;
 
 		(*)
 			project_mount=''
