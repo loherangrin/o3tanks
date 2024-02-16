@@ -1191,7 +1191,14 @@ def apply_engine_updates(engine_version, rebuild):
 		else:
 			save_images = False
 
-		resume_command = [ get_bin_name(), CliCommands.INSTALL.value, print_option(LongOptions.FORCE) ]
+		resume_command = [
+			get_bin_name(),
+			CliCommands.INSTALL.value,
+			CliSubCommands.ENGINE.value,
+			print_option(LongOptions.FORCE),
+			print_option(LongOptions.ALIAS, engine_version)
+		]
+
 		if engine_repository.url != O3DE_REPOSITORY_URL:
 			resume_command.append(print_option(LongOptions.REPOSITORY, engine_repository.url))
 		
@@ -1201,7 +1208,7 @@ def apply_engine_updates(engine_version, rebuild):
 			resume_command.append(print_option(LongOptions.COMMIT, engine_repository.revision))
 
 		if engine_config != O3DE_DEFAULT_CONFIG:
-			resume_command.append(print_option(LongOptions.CONFIG, engine_config))
+			resume_command.append(print_option(LongOptions.CONFIG, engine_config.value))
 
 		if remove_build:
 			resume_command.append(print_option(LongOptions.REMOVE_BUILD))
@@ -1215,7 +1222,6 @@ def apply_engine_updates(engine_version, rebuild):
 			else:
 				resume_command.append(print_option(LongOptions.SAVE_IMAGES, save_images))
 
-		resume_command.append(engine_version)
 		resume_command = ' '.join(resume_command)
 
 		print_msg(Level.INFO, resume_command)
@@ -1234,7 +1240,8 @@ def install_engine(repository, engine_version, engine_config, engine_variant, en
 		get_bin_name(),
 		CliCommands.INSTALL.value,
 		CliSubCommands.ENGINE.value,
-		print_option(LongOptions.FORCE)
+		print_option(LongOptions.FORCE),
+		print_option(LongOptions.ALIAS, engine_version)
 	]
 
 	if repository_url != O3DE_REPOSITORY_URL:
@@ -1247,10 +1254,10 @@ def install_engine(repository, engine_version, engine_config, engine_variant, en
 			resume_command.append(print_option(LongOptions.BRANCH, repository_reference))
 
 	if engine_config != O3DE_DEFAULT_CONFIG:
-		resume_command.append(print_option(LongOptions.CONFIG, engine_config))
+		resume_command.append(print_option(LongOptions.CONFIG, engine_config.value))
 
 	if engine_workflow != O3DE_DEFAULT_WORKFLOW:
-		resume_command.append(print_option(LongOptions.WORKFLOW, engine_workflow))
+		resume_command.append(print_option(LongOptions.WORKFLOW, engine_workflow.value))
 
 	if incremental:
 		resume_command.append(print_option(LongOptions.INCREMENTAL))
@@ -1261,7 +1268,6 @@ def install_engine(repository, engine_version, engine_config, engine_variant, en
 		else:
 			resume_command.append(print_option(LongOptions.SAVE_IMAGES, save_images))
 
-	resume_command.append(engine_version)
 	resume_command = ' '.join(resume_command)
 
 	source_volume = CONTAINER_CLIENT.get_volume_name(Volumes.SOURCE, engine_version)
