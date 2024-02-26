@@ -140,7 +140,7 @@ def get_script_filename(name):
 
 
 def has_configuration(config_dir):
-	return config_dir.is_dir() and (
+	return (config_dir is not None) and config_dir.is_dir() and (
 		(config_dir / get_binary_filename("Editor")).is_file() or
 		any(config_dir.glob(get_binary_filename("**/*.GameLauncher"))) or
 		any(config_dir.glob(get_binary_filename("**/*.ServerLauncher")))

@@ -86,22 +86,34 @@ def get_default_root_dir():
 
 
 def get_build_path(builds_root_dir, variant = O3DE_Variants.NON_MONOLITHIC, operating_system = OPERATING_SYSTEM):
+	if builds_root_dir is None:
+		return None
+
 	return builds_root_dir / "{}{}".format(operating_system.family.value, "_mono" if variant is O3DE_Variants.MONOLITHIC else "")
 
 
 def get_build_bin_path(build_dir, config):
+	if build_dir is None:
+		return None
+
 	return pathlib.Path("{}/bin/{}".format(build_dir, config.value))
 
 
 def get_install_bin_path(install_dir, config, variant = O3DE_Variants.NON_MONOLITHIC, operating_system = OPERATING_SYSTEM):
+	if install_dir is None:
+		return None
+
 	return pathlib.Path("{}/bin/{}/{}/{}".format(install_dir, operating_system.family.value, config.value, "Monolithic" if variant is O3DE_Variants.MONOLITHIC else "Default"))
 
 def get_install_lib_path(install_dir, config, variant = O3DE_Variants.NON_MONOLITHIC, operating_system = OPERATING_SYSTEM):
+	if install_dir is None:
+		return None
+
 	return pathlib.Path("{}/lib/{}/{}/{}".format(install_dir, operating_system.family.value, config.value, "Monolithic" if variant is O3DE_Variants.MONOLITHIC else "Default"))
 
 
 def get_build_workflow(source_dir, build_dir, install_dir):
-	if source_dir.is_dir() and (source_dir / ".git").is_dir() and (source_dir / "engine.json").is_file():
+	if (source_dir is not None ) and source_dir.is_dir() and (source_dir / ".git").is_dir() and (source_dir / "engine.json").is_file():
 		build_workflow = O3DE_BuildWorkflows.PROJECT_CENTRIC_ENGINE_SOURCE
 	else:
 		build_workflow = None
@@ -143,7 +155,7 @@ def has_install_config(install_dir, config, variant):
 		return True
 	
 	lib_dir = get_install_lib_path(install_dir, config, variant)
-	return lib_dir.is_dir() and not is_directory_empty(lib_dir)
+	return (lib_dir is not None) and lib_dir.is_dir() and not is_directory_empty(lib_dir)
 
 
 # --- CONSTANTS ---

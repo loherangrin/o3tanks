@@ -125,16 +125,16 @@ def check_project_dependencies(project_dir, config = None, variant = None, check
 		elif result.type is DependencyResultType.DIFFERENT:
 			different = result.value[0] if (isinstance(result.value, list) and len(result.value) > 0) else None
 			if different is EngineSettings.REPOSITORY:
-				throw_error(Messages.BINDING_DIFFERENT_REPOSITORY, Targets.ENGINE)
+				throw_error(Messages.BINDING_DIFFERENT_REPOSITORY, Targets.ENGINE.value)
 			elif different is EngineSettings.WORKFLOW:
 				throw_error(Messages.BINDING_DIFFERENT_WORKFLOW, result.value[1], result.value[2])
 			else:
 				throw_error(Messages.INVALID_DEPENDENCY_RESULT_VALUE, different)
 
 		elif result.type is DependencyResultType.NOT_FOUND:
-			throw_error(Messages.BINDING_INSTALL_NOT_FOUND, Targets.ENGINE)
+			throw_error(Messages.BINDING_INSTALL_NOT_FOUND, Targets.ENGINE.value)
 		else:
-			throw_error(Messages.BINDING_INVALID_REPOSITORY, Targets.ENGINE)
+			throw_error(Messages.BINDING_INVALID_REPOSITORY, Targets.ENGINE.value)
 
 		if not is_engine_installed(engine_version):
 			throw_error(Messages.MISSING_BOUND_VERSION, Targets.ENGINE.value, engine_version)
@@ -213,6 +213,9 @@ def check_project_dependencies(project_dir, config = None, variant = None, check
 
 
 def copy_project_to_archive(bin_dir, cache_dir, bundle_files, binary_name, platform, variant, archive_handle, archive_type, archive_base_dir):
+	if (bin_dir is None) or (cache_dir is None):
+		return False
+
 	library_suffix = get_library_filename("")
 
 	for content in bin_dir.iterdir():
@@ -424,12 +427,18 @@ def initialize_volumes(names, resume_command, force = False):
 			created = True
 
 			new_dir = CONTAINER_CLIENT.get_volume_path(name)
+			if new_dir is None:
+				throw_error(Messages.VOLUME_NOT_FOUND, name)
+
 			new_dirs.append(new_dir)
 
 	if force:
 		new_dirs = []
 		for name in names:
 			new_dir = CONTAINER_CLIENT.get_volume_path(name)
+			if new_dir is None:
+				throw_error(Messages.VOLUME_NOT_FOUND, name)
+
 			new_dirs.append(new_dir)
 
 	if len(new_dirs) == 0:
@@ -660,7 +669,7 @@ def select_recommended_config(engine_version, max_limit = O3DE_Configs.PROFILE):
 
 	elif engine_workflow is O3DE_BuildWorkflows.ENGINE_CENTRIC:
 		for config in O3DE_Configs:
-			if (build_dir is not None) and has_build_config(build_dir, config):
+			if has_build_config(build_dir, config):
 				engine_config = config
 
 			if config is max_limit:
@@ -672,7 +681,7 @@ def select_recommended_config(engine_version, max_limit = O3DE_Configs.PROFILE):
 
 			if (
 				CONTAINER_CLIENT.image_exists(install_builder_image) or
-				(install_dir is not None and has_install_config(install_dir, config, O3DE_DEFAULT_VARIANT))
+				has_install_config(install_dir, config, O3DE_DEFAULT_VARIANT)
 			):
 				engine_config = config
 
@@ -1897,7 +1906,7 @@ def export_project(project_dir, binary, config, variant, output_type, output_nam
 		if not built:
 			throw_error(Messages.UNCOMPLETED_EXPORT)
 	else:
-		if not (bin_dir / binary_name).is_file():
+		if (bin_dir is None) or not (bin_dir / binary_name).is_file():
 			throw_error(Messages.EXPORT_MISSING_BINARY, config.value, variant.value)
 
 		print_msg(Level.INFO, Messages.EXPORT_SKIP_BUILD_SOURCE)
@@ -2219,9 +2228,9 @@ def open_project(project_dir, engine_config = None, new_engine_version = None, e
 		build_dir = get_build_path(CONTAINER_CLIENT.get_volume_path(build_volume))
 
 	bin_build_dir = get_build_bin_path(build_dir, engine_config)
-	project_library_file = bin_build_dir / get_library_filename("lib" + project_name)
+	project_library_file = bin_build_dir / get_library_filename("lib" + project_name) if (bin_build_dir is not None) else None
 
-	if not project_library_file.is_file():
+	if (project_library_file is None) or not project_library_file.is_file():
 		if is_project_centric:
 			built = run_builder(engine_version, engine_config, project_dir, external_gem_dirs, BuilderCommands.BUILD, Targets.PROJECT, engine_config, O3DE_Variants.NON_MONOLITHIC, O3DE_ProjectBinaries.TOOLS, was_config_missing)
 			if not built:

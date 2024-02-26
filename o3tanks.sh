@@ -941,7 +941,7 @@ run_cli()
 	check_cli
 
 	local docker_socket
-	if [ -n "${DOCKER_HOST}" ]; then
+	if [ -n "${DOCKER_HOST:-}" ]; then
 		local docker_protocol
 		docker_protocol=$(extract_substring "${DOCKER_HOST}" ':/' '1')
 
