@@ -179,11 +179,11 @@ def main():
 
 	if target is None:
 		throw_error(Messages.INVALID_TARGET, sys.argv[2])
-	elif target in [ Targets.ENGINE, Targets.SELF ]:
+	elif target is Targets.ENGINE:
 		repository_dir = O3DE_ENGINE_SOURCE_DIR
 	elif target is Targets.GEM:
 		repository_dir = O3DE_GEMS_DIR
-	elif target is Targets.PROJECT:
+	elif target in [ Targets.PROJECT, Targets.SELF ]:
 		repository_dir = O3DE_PROJECT_SOURCE_DIR
 	else:
 		throw_error(Messages.INVALID_TARGET, target)

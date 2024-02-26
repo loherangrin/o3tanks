@@ -95,7 +95,11 @@ get_message_text()
 			;;
 
 		("${MESSAGES_VOLUMES_DIR_NOT_FOUND}")
-			echo 'Unable to find the volumes storage at: %s'
+			echo 'Unable to find a valid directory for Docker volumes at: %s'
+			;;
+
+		("${MESSAGES_VOLUMES_DIR_PERMISSION_DENIED}")
+			echo 'Unable to access to the Docker directory at: %s.\n Please assign at least the execution permission (x)'
 			;;
 
 		(*)
@@ -621,13 +625,16 @@ init_globals()
 	readonly COMMANDS_INIT='init'
 	readonly COMMANDS_INSTALL='install'
 	readonly COMMANDS_OPEN='open'
+	readonly COMMANDS_REFRESH='refresh'
 	readonly COMMANDS_REMOVE='remove'
 	readonly COMMANDS_RUN='run'
 	readonly COMMANDS_SETTINGS='settings'
+	readonly COMMANDS_UPGRADE='upgrade'
 
 	readonly SUBCOMMANDS_ASSETS='assets'
 	readonly SUBCOMMANDS_GEM='gem'
 	readonly SUBCOMMANDS_PROJECT='project'
+	readonly SUBCOMMANDS_SELF='self'
 
 	readonly DISPLAY_TYPES_NONE='none'
 
@@ -664,6 +671,7 @@ init_globals()
 	readonly MESSAGES_UNSUPPORTED_CONTAINTERS_MODE=17
 	readonly MESSAGES_UNSUPPORTED_SELECT_GPU_ID=18
 	readonly MESSAGES_VOLUMES_DIR_NOT_FOUND=19
+	readonly MESSAGES_VOLUMES_DIR_PERMISSION_DENIED=20
 
 	readonly NETWORK_NAMES_NONE='none'
 	local network_name="${O3TANKS_NETWORK:-}"
@@ -933,7 +941,7 @@ run_cli()
 	check_cli
 
 	local docker_socket
-	if [ -n "${DOCKER_HOST}" ]; then
+	if [ -n "${DOCKER_HOST:-}" ]; then
 		local docker_protocol
 		docker_protocol=$(extract_substring "${DOCKER_HOST}" ':/' '1')
 
@@ -966,7 +974,11 @@ run_cli()
 	local docker_volumes_dir
 	docker_volumes_dir="${docker_root_dir}/volumes"
 	if ! [ -d "${docker_volumes_dir}" ]; then
-		throw_error "${MESSAGES_VOLUMES_DIR_NOT_FOUND}"
+		if [ -d "${docker_root_dir}" ] && ! [ -x "${docker_root_dir}" ]; then
+			throw_error "${MESSAGES_VOLUMES_DIR_PERMISSION_DENIED}" "${docker_root_dir}"
+		else
+			throw_error "${MESSAGES_VOLUMES_DIR_NOT_FOUND}" "${docker_volumes_dir}"
+		fi
 	fi
 
 	local project_mount
@@ -1082,7 +1094,17 @@ run_cli()
 
 				project_mount="--mount type=bind,source=${project_dir},destination=${O3DE_PROJECT_DIR}"
 			fi
-			;;	
+			;;
+
+			("${COMMANDS_REFRESH}"|"${COMMANDS_UPGRADE}")
+			local subcommand
+			subcommand="${2:-}"
+			if [ "${subcommand}" = "${SUBCOMMANDS_SELF}" ]; then
+				project_mount="--mount type=bind,source=${BIN_DIR},destination=${O3DE_PROJECT_DIR}"
+			else
+				project_mount=''
+			fi
+			;;
 
 		(*)
 			project_mount=''

@@ -17,6 +17,7 @@ from .input_output import Level, Messages, ask_for_confirmation, print_msg, thro
 from .types import JsonPropertyKey, ObjectEnum
 import configparser
 import json
+import os
 import shutil
 
 
@@ -38,6 +39,19 @@ def calculate_size(path):
 		bytes_size = 0
 
 	return bytes_size
+
+
+def change_owner(path, user):
+	if (path is None) or (user is None):
+		return None
+
+	os.chown(path, user.uid, user.gid)
+
+	for content in path.iterdir():
+		if content.is_dir():
+			change_owner(content, user)
+
+		os.chown(content, user.uid, user.gid)
 
 
 def clear_directory(path, require_confirmation = False):

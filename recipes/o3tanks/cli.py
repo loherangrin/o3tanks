@@ -125,16 +125,16 @@ def check_project_dependencies(project_dir, config = None, variant = None, check
 		elif result.type is DependencyResultType.DIFFERENT:
 			different = result.value[0] if (isinstance(result.value, list) and len(result.value) > 0) else None
 			if different is EngineSettings.REPOSITORY:
-				throw_error(Messages.BINDING_DIFFERENT_REPOSITORY, Targets.ENGINE)
+				throw_error(Messages.BINDING_DIFFERENT_REPOSITORY, Targets.ENGINE.value)
 			elif different is EngineSettings.WORKFLOW:
 				throw_error(Messages.BINDING_DIFFERENT_WORKFLOW, result.value[1], result.value[2])
 			else:
 				throw_error(Messages.INVALID_DEPENDENCY_RESULT_VALUE, different)
 
 		elif result.type is DependencyResultType.NOT_FOUND:
-			throw_error(Messages.BINDING_INSTALL_NOT_FOUND, Targets.ENGINE)
+			throw_error(Messages.BINDING_INSTALL_NOT_FOUND, Targets.ENGINE.value)
 		else:
-			throw_error(Messages.BINDING_INVALID_REPOSITORY, Targets.ENGINE)
+			throw_error(Messages.BINDING_INVALID_REPOSITORY, Targets.ENGINE.value)
 
 		if not is_engine_installed(engine_version):
 			throw_error(Messages.MISSING_BOUND_VERSION, Targets.ENGINE.value, engine_version)
@@ -213,6 +213,9 @@ def check_project_dependencies(project_dir, config = None, variant = None, check
 
 
 def copy_project_to_archive(bin_dir, cache_dir, bundle_files, binary_name, platform, variant, archive_handle, archive_type, archive_base_dir):
+	if (bin_dir is None) or (cache_dir is None):
+		return False
+
 	library_suffix = get_library_filename("")
 
 	for content in bin_dir.iterdir():
@@ -424,12 +427,18 @@ def initialize_volumes(names, resume_command, force = False):
 			created = True
 
 			new_dir = CONTAINER_CLIENT.get_volume_path(name)
+			if new_dir is None:
+				throw_error(Messages.VOLUME_NOT_FOUND, name)
+
 			new_dirs.append(new_dir)
 
 	if force:
 		new_dirs = []
 		for name in names:
 			new_dir = CONTAINER_CLIENT.get_volume_path(name)
+			if new_dir is None:
+				throw_error(Messages.VOLUME_NOT_FOUND, name)
+
 			new_dirs.append(new_dir)
 
 	if len(new_dirs) == 0:
@@ -660,7 +669,7 @@ def select_recommended_config(engine_version, max_limit = O3DE_Configs.PROFILE):
 
 	elif engine_workflow is O3DE_BuildWorkflows.ENGINE_CENTRIC:
 		for config in O3DE_Configs:
-			if (build_dir is not None) and has_build_config(build_dir, config):
+			if has_build_config(build_dir, config):
 				engine_config = config
 
 			if config is max_limit:
@@ -672,7 +681,7 @@ def select_recommended_config(engine_version, max_limit = O3DE_Configs.PROFILE):
 
 			if (
 				CONTAINER_CLIENT.image_exists(install_builder_image) or
-				(install_dir is not None and has_install_config(install_dir, config, O3DE_DEFAULT_VARIANT))
+				has_install_config(install_dir, config, O3DE_DEFAULT_VARIANT)
 			):
 				engine_config = config
 
@@ -691,14 +700,14 @@ def select_recommended_config(engine_version, max_limit = O3DE_Configs.PROFILE):
 # --- FUNCTIONS (GENERIC) ---
 
 def apply_updates():
-	resume_command = [
+	resume_command = ' '.join([
 		get_bin_name(),
 		CliCommands.UPGRADE.value,
 		CliSubCommands.SELF.value[0]
-	]
+	])
 
 	if CONTAINER_CLIENT.is_in_container():
-		installation_dir = ROOT_DIR
+		installation_dir = O3DE_PROJECT_SOURCE_DIR
 		mapping = { str(installation_dir): get_real_bin_file().parent }
 	else:
 		installation_dir = get_real_bin_file().parent
@@ -834,17 +843,12 @@ def check_ownership(paths, instructions, resume_command, mapping = None):
 		paths = [ paths ]
 	elif len(paths) == 0:
 		return
-
-	current_user = CONTAINER_CLIENT.get_current_user()
-	if current_user is None:
-		throw_error(Messages.INVALID_CURRENT_USER)
+	elif OPERATING_SYSTEM.family is OSFamilies.WINDOWS:
+		return
 
 	container_user = CONTAINER_CLIENT.get_container_user()
-	if container_user is None:
+	if (container_user.uid is None) or (container_user.gid is None):
 		throw_error(Messages.INVALID_CONTAINER_USER)
-
-	if (current_user.uid == container_user.uid) and (current_user.gid == container_user.gid):
-		return
 
 	wrong_paths = []
 	for path in paths:
@@ -861,16 +865,34 @@ def check_ownership(paths, instructions, resume_command, mapping = None):
 	if has_superuser_privileges():
 		try:
 			for wrong_path in wrong_paths:
-				os.chown(wrong_path, container_user.uid, container_user.gid)
+				change_owner(wrong_path, container_user)
 
 			show_instructions = False
 
-		except PermissionError:
+		except Exception as error:
+			real_path = wrong_path
+			if mapping is not None:
+				for mapping_from, mapping_to in mapping.items():
+					try:
+						relative_path = wrong_path.relative_to(mapping_from)
+						real_path = mapping_to / relative_path
+						break
+					except ValueError:
+						continue
+
+			print_msg(Level.ERROR, Messages.UNCOMPLETED_CHANGE_OWNERSHIP, real_path, error)
+			print_msg(Level.INFO, '')
+
 			show_instructions = True
+
 	else:
 		show_instructions = True
 
 	if show_instructions:
+		real_container_user = CONTAINER_CLIENT.get_container_user(False)
+		if (real_container_user.uid is None) or (real_container_user.gid is None):
+			throw_error(Messages.INVALID_CONTAINER_USER)
+
 		print_msg(Level.INFO, instructions)
 		print_msg(Level.INFO, '')
 		print_msg(Level.INFO, Messages.RUN_PRIVILEGED_COMMANDS)
@@ -884,7 +906,7 @@ def check_ownership(paths, instructions, resume_command, mapping = None):
 						real_path = mapping_to / relative_path
 						break
 					except ValueError:
-						continue						
+						continue
 
 			real_container_user = CONTAINER_CLIENT.get_container_user(False)
 			print_msg(Level.INFO, "sudo chown --recursive {}:{} {}".format(real_container_user.uid, real_container_user.gid, real_path))
@@ -1070,7 +1092,7 @@ def run_updater(engine_version, command, target, *arguments):
 		binds[str(project_dir)] = str(O3DE_PROJECT_SOURCE_DIR)
 
 	elif target is Targets.SELF:
-		binds[str(get_real_bin_file().parent)] = str(O3DE_ENGINE_SOURCE_DIR)
+		binds[str(get_real_bin_file().parent)] = str(O3DE_PROJECT_SOURCE_DIR)
 
 	else:
 		throw_error(Messages.INVALID_TARGET, target)
@@ -1092,14 +1114,14 @@ def run_updater(engine_version, command, target, *arguments):
 
 
 def search_updates():
-	resume_command = [
+	resume_command = ' '.join([
 		get_bin_name(),
 		CliCommands.REFRESH.value,
 		CliSubCommands.SELF.value[0]
-	]
+	])
 
 	if CONTAINER_CLIENT.is_in_container():
-		installation_dir = ROOT_DIR
+		installation_dir = O3DE_PROJECT_SOURCE_DIR
 		mapping = { str(installation_dir): get_real_bin_file().parent }
 	else:
 		installation_dir = get_real_bin_file().parent
@@ -1191,7 +1213,14 @@ def apply_engine_updates(engine_version, rebuild):
 		else:
 			save_images = False
 
-		resume_command = [ get_bin_name(), CliCommands.INSTALL.value, print_option(LongOptions.FORCE) ]
+		resume_command = [
+			get_bin_name(),
+			CliCommands.INSTALL.value,
+			CliSubCommands.ENGINE.value,
+			print_option(LongOptions.FORCE),
+			print_option(LongOptions.ALIAS, engine_version)
+		]
+
 		if engine_repository.url != O3DE_REPOSITORY_URL:
 			resume_command.append(print_option(LongOptions.REPOSITORY, engine_repository.url))
 		
@@ -1201,7 +1230,7 @@ def apply_engine_updates(engine_version, rebuild):
 			resume_command.append(print_option(LongOptions.COMMIT, engine_repository.revision))
 
 		if engine_config != O3DE_DEFAULT_CONFIG:
-			resume_command.append(print_option(LongOptions.CONFIG, engine_config))
+			resume_command.append(print_option(LongOptions.CONFIG, engine_config.value))
 
 		if remove_build:
 			resume_command.append(print_option(LongOptions.REMOVE_BUILD))
@@ -1215,7 +1244,6 @@ def apply_engine_updates(engine_version, rebuild):
 			else:
 				resume_command.append(print_option(LongOptions.SAVE_IMAGES, save_images))
 
-		resume_command.append(engine_version)
 		resume_command = ' '.join(resume_command)
 
 		print_msg(Level.INFO, resume_command)
@@ -1234,7 +1262,8 @@ def install_engine(repository, engine_version, engine_config, engine_variant, en
 		get_bin_name(),
 		CliCommands.INSTALL.value,
 		CliSubCommands.ENGINE.value,
-		print_option(LongOptions.FORCE)
+		print_option(LongOptions.FORCE),
+		print_option(LongOptions.ALIAS, engine_version)
 	]
 
 	if repository_url != O3DE_REPOSITORY_URL:
@@ -1247,10 +1276,10 @@ def install_engine(repository, engine_version, engine_config, engine_variant, en
 			resume_command.append(print_option(LongOptions.BRANCH, repository_reference))
 
 	if engine_config != O3DE_DEFAULT_CONFIG:
-		resume_command.append(print_option(LongOptions.CONFIG, engine_config))
+		resume_command.append(print_option(LongOptions.CONFIG, engine_config.value))
 
 	if engine_workflow != O3DE_DEFAULT_WORKFLOW:
-		resume_command.append(print_option(LongOptions.WORKFLOW, engine_workflow))
+		resume_command.append(print_option(LongOptions.WORKFLOW, engine_workflow.value))
 
 	if incremental:
 		resume_command.append(print_option(LongOptions.INCREMENTAL))
@@ -1261,7 +1290,6 @@ def install_engine(repository, engine_version, engine_config, engine_variant, en
 		else:
 			resume_command.append(print_option(LongOptions.SAVE_IMAGES, save_images))
 
-	resume_command.append(engine_version)
 	resume_command = ' '.join(resume_command)
 
 	source_volume = CONTAINER_CLIENT.get_volume_name(Volumes.SOURCE, engine_version)
@@ -1878,7 +1906,7 @@ def export_project(project_dir, binary, config, variant, output_type, output_nam
 		if not built:
 			throw_error(Messages.UNCOMPLETED_EXPORT)
 	else:
-		if not (bin_dir / binary_name).is_file():
+		if (bin_dir is None) or not (bin_dir / binary_name).is_file():
 			throw_error(Messages.EXPORT_MISSING_BINARY, config.value, variant.value)
 
 		print_msg(Level.INFO, Messages.EXPORT_SKIP_BUILD_SOURCE)
@@ -2200,9 +2228,9 @@ def open_project(project_dir, engine_config = None, new_engine_version = None, e
 		build_dir = get_build_path(CONTAINER_CLIENT.get_volume_path(build_volume))
 
 	bin_build_dir = get_build_bin_path(build_dir, engine_config)
-	project_library_file = bin_build_dir / get_library_filename("lib" + project_name)
+	project_library_file = bin_build_dir / get_library_filename("lib" + project_name) if (bin_build_dir is not None) else None
 
-	if not project_library_file.is_file():
+	if (project_library_file is None) or not project_library_file.is_file():
 		if is_project_centric:
 			built = run_builder(engine_version, engine_config, project_dir, external_gem_dirs, BuilderCommands.BUILD, Targets.PROJECT, engine_config, O3DE_Variants.NON_MONOLITHIC, O3DE_ProjectBinaries.TOOLS, was_config_missing)
 			if not built:
