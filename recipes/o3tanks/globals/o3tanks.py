@@ -248,7 +248,7 @@ def get_os():
 
 			else:
 				os_name = LinuxOSNames.UBUNTU
-				os_version = "22.04"
+				os_version = "24.04"
 
 		else:
 			os_name = None

@@ -1097,8 +1097,8 @@ main()
 			fi
 
 			local default_os_name="${OS_NAMES_UBUNTU}"
-			local default_os_version="22.04"
-			local default_os_codename="jammy"
+			local default_os_version="24.04"
+			local default_os_codename="noble"
 
 			local install_external_packages
 			if [ "${1}" = '--no-external' ]; then
