@@ -705,7 +705,7 @@ def get_message_text(message_id, *args, **kwargs):
 	elif message_id == Messages.UNSUPPORTED_CONTAINERS_AND_NO_CLIENT:
 		message_text = "No action can be performed on containers when they are disabled"
 	elif message_id == Messages.UNSUPPORTED_OPERATING_SYSTEM_FOR_REQUIREMENTS:
-		message_text = "Unable to verify requirements since your distro isn't supported yet.\nYou can try to convert the following instructions for 'Ubuntu 22.04':"
+		message_text = "Unable to verify requirements since your distro isn't supported yet.\nYou can try to convert the following instructions for 'Ubuntu 24.04':"
 	elif message_id == Messages.UNSUPPORTED_INSERT_SETTING_SECTION:
 		message_text = "A setting section cannot be autopopulated. Please set each field using a dedicated '" + print_command(CliCommands.SETTINGS) + "' command"
 	elif message_id == Messages.UPDATES_AVAILABLE:

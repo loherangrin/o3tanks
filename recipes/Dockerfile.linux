@@ -41,6 +41,9 @@ RUN if [ -z "${USER_NAME}" ] || [ -z "${USER_GROUP}" ] || [ -z "${USER_UID}" ] |
 		echo 'ERROR: At least one user property is missing. Please check your --build-arg values' \
 	 && exit 1 \
   ; fi \
+ && if [ "${OS_NAME}" = "ubuntu" ] && [ "${OS_VERSION}" > 23.10 ]; then \
+		userdel ubuntu \
+  ; fi \
  && if [ ${USER_GID} -gt 0 ]; then \
  		groupadd \
 			--gid "${USER_GID}" \

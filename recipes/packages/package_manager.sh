@@ -516,7 +516,7 @@ install_packages()
 			setup_command=''
 			refresh_command=''
 			clean_command=''
-			install_package_command="${PYTHON_BIN_FILE} -m pip install"
+			install_package_command="${PYTHON_BIN_FILE} -m pip install --break-system-packages"
 			install_collection_command=''
 			if [ "${manual_installation}" = 'false' ]; then
 				install_package_command="${install_package_command} --no-cache-dir"
@@ -1097,8 +1097,8 @@ main()
 			fi
 
 			local default_os_name="${OS_NAMES_UBUNTU}"
-			local default_os_version="22.04"
-			local default_os_codename="jammy"
+			local default_os_version="24.04"
+			local default_os_codename="noble"
 
 			local install_external_packages
 			if [ "${1}" = '--no-external' ]; then
